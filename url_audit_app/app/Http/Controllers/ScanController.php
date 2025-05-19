@@ -1,0 +1,247 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\ScanResult;
+use Illuminate\Support\Str;
+use App\Jobs\ScanWebsite;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+
+class ScanController extends Controller
+{
+    public function scan(Request $request)
+    {
+        // Validation de l'URL
+        $request->validate([
+            'url' => 'required|url'
+        ]);
+        
+        $url = $request->input('url');
+        
+        // Vérifier si l'URL contient un protocole, ajouter https:// si nécessaire
+        if (!preg_match("~^(?:f|ht)tps?://~i", $url)) {
+            $url = "https://" . $url;
+        }
+        
+        // Conserver l'URL complète pour l'affichage et la base de données
+        $fullUrl = $url;
+        
+        // Extraire le domaine sans le protocole pour les outils de scan
+        $cleanUrl = preg_replace("~^(?:f|ht)tps?://~i", "", $url);
+
+        // Vérifier si un scan récent existe déjà pour cette URL
+        $existingScan = ScanResult::where('url', $fullUrl)
+                                  ->where('status', 'completed')
+                                  ->latest()
+                                  ->first();
+
+        // Si un scan récent existe (moins de 24h), retourner ces résultats
+        if ($existingScan && $existingScan->created_at->diffInHours(now()) < 24) {
+            return response()->json([
+                'message' => 'Recent scan found',
+                'scan_id' => $existingScan->scan_id,
+                'url' => $existingScan->url,
+                'status' => $existingScan->status,
+                'created_at' => $existingScan->created_at,
+                'is_cached' => true
+            ], 200);
+        }
+        
+        try {
+            $scan = ScanResult::create([
+                'scan_id' => Str::uuid(),
+                'url' => $fullUrl,  // Stocker l'URL complète dans la base de données
+                'status' => 'pending',
+                'user_id' => Auth::check() ? Auth::id() : null // Associer au user si connecté
+            ]);
+            
+            // Lancer le job avec l'URL nettoyée pour les outils
+            ScanWebsite::dispatch($cleanUrl, $scan->scan_id)->delay(now()->addSeconds(2));
+            
+            Log::info("Scan started for URL: {$fullUrl}, Clean URL: {$cleanUrl}, Scan ID: {$scan->scan_id}");
+            
+            return response()->json([
+                'message' => 'Scan started',
+                'scan_id' => $scan->scan_id,
+                'url' => $fullUrl
+            ], 202);
+        } catch (\Exception $e) {
+            Log::error("Error starting scan: " . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Error starting scan',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getResults($scan_id)
+    {
+        try {
+            $scan = ScanResult::where('scan_id', $scan_id)->first();
+            
+            if (!$scan) {
+                return response()->json(['message' => 'Scan not found.'], 404);
+            }
+            
+            // Retourner les résultats, incluant l'analyse Gemini si disponible
+            return response()->json([
+                'id' => $scan->scan_id,
+                'scan_id' => $scan->scan_id,
+                'url' => $scan->url,
+                'status' => $scan->status ?? 'unknown',
+                'created_at' => $scan->created_at,
+                'whatweb_output' => $scan->whatweb_output,
+                'sslyze_output' => $scan->sslyze_output,
+                'zap_output' => $scan->zap_output,
+                'error' => $scan->error,
+                'gemini_analysis' => $scan->gemini_analysis
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error retrieving scan results: " . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Error retrieving scan results',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function searchScans(Request $request)
+    {   
+        // Accepter soit 'q' soit 'url' comme paramètre
+        $query = $request->input('q') ?? $request->input('url');
+        
+        if (empty($query)) {
+            return response()->json([
+                'message' => 'Search query is required',
+            ], 400);
+        }
+        
+        try {
+            // Recherche à la fois par URL exacte et par pattern de recherche
+            $scans = ScanResult::where(function($q) use ($query) {
+                            $q->where('url', 'like', '%' . $query . '%')
+                              ->orWhere('url', 'like', '%https://' . $query . '%')
+                              ->orWhere('url', 'like', '%http://' . $query . '%');
+                        })
+                        ->when(Auth::check(), function($q) {
+                            // Si l'utilisateur est connecté, filtre ses scans
+                            return $q->where('user_id', Auth::id());
+                        })
+                        ->orderBy('created_at', 'desc')
+                        ->limit(10)
+                        ->get(['scan_id', 'url', 'status', 'created_at']);
+            
+            // Transformer les résultats pour qu'ils correspondent à l'interface ScanResult
+            $formattedScans = $scans->map(function($scan) {
+                return [
+                    'id' => $scan->scan_id, // Ajout de l'id pour compatibilité avec le frontend
+                    'scan_id' => $scan->scan_id,
+                    'url' => $scan->url,
+                    'status' => $scan->status ?? 'unknown',
+                    'created_at' => $scan->created_at
+                ];
+            });
+            
+            return response()->json($formattedScans);
+        } catch (\Exception $e) {
+            Log::error("Error searching scans: " . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Error searching scans',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getUserScans(Request $request)
+    {
+        if (!Auth::check()) {
+            return response()->json([
+                'message' => 'User not authenticated',
+            ], 401);
+        }
+        
+        try {
+            $limit = $request->input('limit', 10);
+            $scans = ScanResult::where('user_id', Auth::id())
+                              ->orderBy('created_at', 'desc')
+                              ->limit($limit)
+                              ->get(['scan_id', 'url', 'status', 'created_at']);
+            
+            // Transformer les résultats pour qu'ils correspondent à l'interface ScanResult
+            $formattedScans = $scans->map(function($scan) {
+                return [
+                    'id' => $scan->scan_id, // Ajout de l'id pour compatibilité avec le frontend
+                    'scan_id' => $scan->scan_id,
+                    'url' => $scan->url,
+                    'status' => $scan->status ?? 'unknown',
+                    'created_at' => $scan->created_at
+                ];
+            });
+            
+            return response()->json($formattedScans);
+        } catch (\Exception $e) {
+            Log::error("Error retrieving user scans: " . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Error retrieving user scans',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * API pour régénérer manuellement un rapport via Gemini
+     */
+    public function generateReport(Request $request)
+    {
+        // Récupérer l'ID du scan pour lequel générer un rapport
+        $scan_id = $request->input('scan_id');
+        
+        if (empty($scan_id)) {
+            return response()->json([
+                'message' => 'Scan ID is required',
+            ], 400);
+        }
+        
+        try {
+            // Récupérer les données du scan
+            $scan = ScanResult::where('scan_id', $scan_id)->first();
+            
+            if (!$scan) {
+                return response()->json(['message' => 'Scan not found.'], 404);
+            }
+            
+            // Vérifier que le scan est bien terminé
+            if ($scan->status !== 'completed') {
+                return response()->json([
+                    'message' => 'Cannot generate report. Scan is not completed.',
+                    'status' => $scan->status
+                ], 400);
+            }
+            
+            // Créer un nouveau job pour générer le rapport
+            ScanWebsite::dispatch($scan->url, $scan->scan_id)->delay(now());
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Regeneration of analysis requested',
+                'scan_id' => $scan_id,
+                'url' => $scan->url
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error("Error generating report: " . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Error generating report',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+}

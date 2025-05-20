@@ -2,16 +2,17 @@
 import api from '../config/api';
 
 export interface ScanResult {
-  id?: string;         // Optionnel pour compatibilité
-  scan_id?: string;    // Pour compatibilité avec le backend
+  id?: string;
+  scan_id: string;
   url: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: string;
   created_at: string;
   whatweb_output?: string;
   sslyze_output?: string;
   zap_output?: string;
   error?: string;
   gemini_analysis?: string;
+  user_message?: string; // Ajoutez cette ligne
 }
 
 class ScanService {

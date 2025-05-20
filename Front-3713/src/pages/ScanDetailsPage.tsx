@@ -117,62 +117,9 @@ const ScanDetailsContent: React.FC = () => {
           )}
 
           <div style={styles.resultsBox}>
-            <h3>Résultats détaillés</h3>
-
-            {/* WhatWeb Results */}
-            {scan.whatweb_output && (
-              <div style={styles.resultSection}>
-                <h4>
-                  <span style={{ color: getStatusColor(scan.status) }}>
-                    &#9679;
-                  </span>
-                  {" "}WhatWeb Results
-                </h4>
-                <pre style={styles.codeBlock}>
-                  {scan.whatweb_output}
-                </pre>
-              </div>
-            )}
-            
-            {/* SSLyze Results */}
-            {scan.sslyze_output && (
-              <div style={styles.resultSection}>
-                <h4>
-                  <span style={{ color: getStatusColor(scan.status) }}>
-                    &#9679;
-                  </span>
-                  {" "}SSLyze Results
-                </h4>
-                <pre style={styles.codeBlock}>
-                  {scan.sslyze_output}
-                </pre>
-              </div>
-            )}
-            
-            {/* ZAP Results */}
-            {scan.zap_output && scan.zap_output !== 'ZAP simulation' && (
-              <div style={styles.resultSection}>
-                <h4>
-                  <span style={{ color: getStatusColor(scan.status) }}>
-                    &#9679;
-                  </span>
-                  {" "}ZAP Results
-                </h4>
-                <pre style={styles.codeBlock}>
-                  {scan.zap_output}
-                </pre>
-              </div>
-            )}
-
-            {(!scan.whatweb_output && !scan.sslyze_output && 
-              (!scan.zap_output || scan.zap_output === 'ZAP simulation')) && (
-              <div style={styles.emptyResults}>
-                <p>Aucun résultat détaillé n'est disponible pour ce scan.</p>
-              </div>
-            )}
+            <h3>Résultats Rapides</h3>
             {scan.gemini_analysis && (
                 <div style={styles.geminiAnalysisSection}>
-                  <h3>Analyse automatique</h3>
                   <div style={styles.geminiContent}>
                     {scan.gemini_analysis}
                   </div>

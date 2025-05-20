@@ -7,65 +7,117 @@ import ScanResultBox from "../pages/ScanResultBox";
 import ScanHistory from "../pages/ScanHistory";
 import ScanService, { ScanResult } from "../services/ScanService";
 
+interface ExtendedScanResult extends ScanResult {
+  user_message?: string;
+}
+
 const Scanner: React.FC = () => {
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanResult, setScanResult] = useState<ExtendedScanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
-  const [scansHistory, setScansHistory] = useState<ScanResult[]>([]);
+ const [scansHistory, setScansHistory] = useState<ExtendedScanResult[]>([]);
   const [showResultDetails, setShowResultDetails] = useState(false);
-  const [searchResults, setSearchResults] = useState<ScanResult[]>([]);
+  const [searchResults, setSearchResults] = useState<ExtendedScanResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [userMessage, setUserMessage] = useState<string | null>(null);
   
   const navigate = useNavigate();
 
   // Effet pour gérer le polling des résultats
-  useEffect(() => {
-    let pollingInterval: number | null = null;
+// Remplacer votre useEffect actuel par celui-ci
+useEffect(() => {
+  let pollingInterval: number | null = null;
 
-    if (scanId && loading) {
-      pollingInterval = window.setInterval(async () => {
-        try {
-          const resultData = await ScanService.getScanResult(scanId);
+  if (scanId && loading) {
+    pollingInterval = window.setInterval(async () => {
+      try {
+        const resultData = await ScanService.getScanResult(scanId);
 
-          // Mettre à jour le nombre de tentatives
-          setPollCount(prev => prev + 1);
+        // Mettre à jour le nombre de tentatives
+        setPollCount(prev => prev + 1);
+        
+        // Mettre à jour le statut du scan
+        setScanStatus(resultData.status);
+        
+        // Enregistrer le message spécifique à l'utilisateur s'il existe
+        if (resultData.user_message) {
+          setUserMessage(resultData.user_message);
+        }
+        
+        // Vérifier si le scan est terminé ou en erreur
+        if (resultData.status === 'completed') {
+          setScanResult(resultData);
+          setLoading(false);
+
+          // Ajouter le scan à l'historique quand il est terminé
+          setScansHistory(prevHistory => [
+            resultData,
+            ...prevHistory
+          ]);
+
+          if (pollingInterval !== null) clearInterval(pollingInterval);
+        } 
+        // Gestion spéciale pour les statuts d'erreur et de timeout
+        else if (resultData.status === 'failed' || resultData.status === 'timeout') {
+          setScanResult(resultData);
           
-          // Mettre à jour le statut du scan
-          setScanStatus(resultData.status);
-          
-          // Vérifier si le scan est terminé ou en erreur
-          if (resultData.status === 'completed' || resultData.status === 'failed') {
-            setScanResult(resultData);
-            setLoading(false);
-
-            // Ajouter le scan à l'historique quand il est terminé
-            setScansHistory(prevHistory => [
-              resultData,
-              ...prevHistory
-            ]);
-
-            if (pollingInterval !== null) clearInterval(pollingInterval);
-          } else if (pollCount > 60) { // Protection après 60 tentatives (5 minutes à 5s d'intervalle)
-            setError("Le scan prend trop de temps. Veuillez vérifier manuellement les résultats plus tard.");
+          // Ne pas arrêter le polling pour les timeouts - le backend va relancer le scan
+          if (resultData.status as string === 'timeout') {
+            // Continuer le polling mais réduire la fréquence
+            if (pollingInterval !== null) {
+              clearInterval(pollingInterval);
+              pollingInterval = window.setInterval(async () => {
+                try {
+                  const updatedData = await ScanService.getScanResult(scanId);
+                  setScanStatus(updatedData.status);
+                  
+                  if (updatedData.user_message) {
+                    setUserMessage(updatedData.user_message);
+                  }
+                  
+                  if (updatedData.status === 'completed') {
+                    setScanResult(updatedData);
+                    setLoading(false);
+                    if (pollingInterval !== null) clearInterval(pollingInterval);
+                  }
+                } catch (err: any) {
+                  // Ignorer les erreurs temporaires pendant le polling
+                  console.warn("Erreur de polling:", err.message);
+                }
+              }, 15000); // Vérifier toutes les 15 secondes pour les timeouts
+            }
+          } else {
+            // Pour les vraies erreurs, arrêter le polling
             setLoading(false);
             if (pollingInterval !== null) clearInterval(pollingInterval);
           }
-        } catch (err: any) {
-          setError(err.message);
+        } 
+        // Protection après 180 tentatives (15 minutes à 5s d'intervalle)
+        else if (pollCount > 180) {
+          setUserMessage("Le scan prend beaucoup de temps. Vous pouvez revenir plus tard pour voir les résultats.");
           setLoading(false);
           if (pollingInterval !== null) clearInterval(pollingInterval);
         }
-      }, 5000); // Vérifier toutes les 5 secondes
-    }
+      } catch (err: any) {
+        // Ne pas afficher d'erreur pour les problèmes temporaires de réseau
+        console.warn("Erreur temporaire lors du polling:", err.message);
+        
+        // Seulement afficher l'erreur après plusieurs échecs consécutifs
+        if (pollCount % 5 === 0) { // Tous les 5 échecs
+          setError(`Problème de connexion: ${err.message}. Nous continuons à essayer...`);
+        }
+      }
+    }, 5000); // Vérifier toutes les 5 secondes
+  }
 
-    return () => {
-      if (pollingInterval !== null) clearInterval(pollingInterval);
-    };
-  }, [scanId, loading, pollCount]);
+  return () => {
+    if (pollingInterval !== null) clearInterval(pollingInterval);
+  };
+}, [scanId, loading, pollCount]);
 
   // Effet pour charger l'historique des scans au chargement du composant
   useEffect(() => {
@@ -123,22 +175,33 @@ const Scanner: React.FC = () => {
   };
 
   // Fonction pour afficher le message de statut approprié
-  const getStatusMessage = () => {
-    if (!scanStatus) return "Initialisation du scan...";
-    
-    switch (scanStatus) {
-      case 'pending':
-        return "Le scan est en file d'attente...";
-      case 'running':
-        return `Scan en cours (vérification ${pollCount})...`;
-      case 'completed':
-        return "Scan terminé avec succès!";
-      case 'failed':
-        return "Le scan a échoué.";
-      default:
-        return `Statut: ${scanStatus}`;
-    }
-  };
+  // Remplacer la fonction entière par celle-ci
+const getStatusMessage = () => {
+  // Utiliser le message personnalisé du backend s'il existe
+  if (userMessage) {
+    return userMessage;
+  }
+  
+  if (!scanStatus) return "Initialisation du scan...";
+  
+  switch (scanStatus) {
+    case 'pending':
+      return "Le scan est en file d'attente...";
+    case 'running':
+      if (pollCount > 60) {
+        return `Scan en cours (durée: ${Math.floor(pollCount/12)} min). Ce site nécessite une analyse approfondie...`;
+      }
+      return `Scan en cours (vérification ${pollCount})...`;
+    case 'completed':
+      return "Scan terminé avec succès!";
+    case 'failed':
+      return "Le scan a échoué. Nous allons essayer de le relancer automatiquement.";
+    case 'timeout':
+      return "Le scan prend plus de temps que prévu. Veuillez patienter, nous continuons l'analyse en arrière-plan.";
+    default:
+      return `Statut: ${scanStatus}`;
+  }
+};
 
   // Fonction pour basculer entre la vue principale et l'historique
   const toggleHistory = () => {
@@ -146,7 +209,8 @@ const Scanner: React.FC = () => {
   };
 
   // Fonction pour naviguer vers les détails du scan
-  const goToScanDetails = (scan: ScanResult) => {
+  const goToScanDetails = (scan: ExtendedScanResult) => {
+
     // Utiliser scan.id ou scan.scan_id selon ce qui est disponible
     const scanIdentifier = scan.id || scan.scan_id;
     
@@ -210,8 +274,8 @@ const Scanner: React.FC = () => {
             onClick={toggleHistory} 
             style={{
               padding: "8px 16px",
-              background: "var(--accent-color)",
-              color: "white",
+              background: "var(--border-color)",
+              color: "var(--bg-color)",
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
@@ -294,14 +358,14 @@ const Scanner: React.FC = () => {
 
           {/* Box de Statut du Scan */}
           {(loading || scanResult) && (
-            <ScanResultBox 
-              loading={loading}
-              status={scanStatus} 
-              url={scanResult?.url || "URL en cours de scan..."} 
-              statusMessage={getStatusMessage()}
-              onViewDetails={() => scanResult && goToScanDetails(scanResult)}
-              error={error}
-            />
+              <ScanResultBox 
+                loading={loading}
+                status={scanStatus} 
+                url={scanResult?.url || "URL en cours de scan..."} 
+                statusMessage={getStatusMessage()}
+                error={error}
+                userMessage={userMessage}
+              />
           )}
 
           {/* Résultat détaillé si demandé */}

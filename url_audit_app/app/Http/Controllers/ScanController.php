@@ -78,37 +78,51 @@ class ScanController extends Controller
         }
     }
 
-    public function getResults($scan_id)
-    {
-        try {
-            $scan = ScanResult::where('scan_id', $scan_id)->first();
-            
-            if (!$scan) {
-                return response()->json(['message' => 'Scan not found.'], 404);
-            }
-            
-            // Retourner les résultats, incluant l'analyse Gemini si disponible
-            return response()->json([
-                'id' => $scan->scan_id,
-                'scan_id' => $scan->scan_id,
-                'url' => $scan->url,
-                'status' => $scan->status ?? 'unknown',
-                'created_at' => $scan->created_at,
-                'whatweb_output' => $scan->whatweb_output,
-                'sslyze_output' => $scan->sslyze_output,
-                'zap_output' => $scan->zap_output,
-                'error' => $scan->error,
-                'gemini_analysis' => $scan->gemini_analysis
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Error retrieving scan results: " . $e->getMessage());
-            
-            return response()->json([
-                'message' => 'Error retrieving scan results',
-                'error' => $e->getMessage()
-            ], 500);
+   public function getResults($scan_id)
+{
+    try {
+        $scan = ScanResult::where('scan_id', $scan_id)->first();
+        
+        if (!$scan) {
+            return response()->json(['message' => 'Scan not found.'], 404);
         }
+        
+        // Personnaliser les messages pour l'interface utilisateur
+        $clientMessage = null;
+        
+        if ($scan->status === 'timeout') {
+            $clientMessage = "Your scan is taking longer than expected. Please be patient, we're still working on it.";
+        } elseif ($scan->status === 'failed') {
+            $clientMessage = "We encountered an issue while scanning this website. We're attempting to resolve it. Please check back in a few minutes.";
+        } elseif ($scan->status === 'running') {
+            $clientMessage = "Your scan is in progress. This may take several minutes for complex websites. Please wait.";
+        } elseif ($scan->status === 'completed') {
+            $clientMessage = "Ta-da ! Your scan is completed, you can now check the results.";
+        }
+        // Retourner les résultats, incluant l'analyse Gemini si disponible
+        return response()->json([
+            'id' => $scan->scan_id,
+            'scan_id' => $scan->scan_id,
+            'url' => $scan->url,
+            'status' => $scan->status ?? 'unknown',
+            'created_at' => $scan->created_at,
+            'whatweb_output' => $scan->whatweb_output,
+            'sslyze_output' => $scan->sslyze_output,
+            'zap_output' => $scan->zap_output,
+            'error' => $scan->error,
+            'gemini_analysis' => $scan->gemini_analysis,
+            'user_message' => $clientMessage
+        ]);
+    } catch (\Exception $e) {
+        Log::error("Error retrieving scan results: " . $e->getMessage());
+        
+        return response()->json([
+            'message' => 'Error retrieving scan results',
+            'error' => $e->getMessage(),
+            'user_message' => "We're experiencing some technical difficulties. Please try again later."
+        ], 500);
     }
+}
 
     public function searchScans(Request $request)
     {   

@@ -1,4 +1,3 @@
-// src/components/ScanResultBox.tsx
 import React from "react";
 
 interface ScanResultBoxProps {
@@ -6,8 +5,8 @@ interface ScanResultBoxProps {
   status: string | null;
   url: string;
   statusMessage: string;
-  onViewDetails: () => void;
   error: string | null;
+  userMessage?: string | null; // Ajout de cette prop uniquement
 }
 
 const ScanResultBox: React.FC<ScanResultBoxProps> = ({
@@ -15,8 +14,8 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
   status,
   url,
   statusMessage,
-  onViewDetails,
-  error
+  error,
+  userMessage // Ajout de cette prop dans la destructuration
 }) => {
   const getStatusColor = () => {
     switch (status) {
@@ -24,6 +23,8 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         return "#2ecc71"; // vert
       case "failed":
         return "#e74c3c"; // rouge
+      case "timeout":  // Ajout de ce cas
+        return "#e67e22"; // orange foncé
       case "pending":
       case "running":
         return "#f39c12"; // orange/jaune
@@ -89,6 +90,9 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
             statusMessage
           )}
         </p>
+        
+        {/* Ligne ajoutée pour utiliser userMessage si disponible */}
+        {userMessage && <p style={{ marginTop: "8px", fontSize: "0.9rem" }}>{userMessage}</p>}
       </div>
 
       {error && (
@@ -104,9 +108,10 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         </div>
       )}
 
-      {(status === "completed" || !loading) && (
+      {/* Modifié pour gérer les cas timeout et failed */}
+      {(status === "completed" || status === "failed" || status === "timeout" || !loading) && (
         <button
-          onClick={onViewDetails}
+          
           style={{
             padding: "8px 16px",
             backgroundColor: "var(--accent-color)",
@@ -117,7 +122,9 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
             fontWeight: "bold",
           }}
         >
-          {status === "completed" ? "View Full Report" : "Check Progress"}
+          {status === "completed" ? "View Full Report" :
+           status === "failed" ? "View Details" :
+           status === "timeout" ? "Check Latest Results" : "Check Progress"}
         </button>
       )}
     </div>

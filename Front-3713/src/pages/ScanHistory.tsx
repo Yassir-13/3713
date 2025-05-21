@@ -5,9 +5,16 @@ import { ScanResult } from "../services/ScanService";
 interface ScanHistoryProps {
   scans: ScanResult[];
   onSelectScan: (scan: ScanResult) => void;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
-const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
+const ScanHistory: React.FC<ScanHistoryProps> = ({ 
+  scans, 
+  onSelectScan,
+  isLoading = false,
+  error = null
+}) => {
   const [searchQuery, setSearchQuery] = useState("");
   
   // Vérifier que scans est un tableau avant de filtrer
@@ -63,10 +70,35 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
     return `scan-index-${index}`;
   };
 
+  // Afficher l'état de chargement
+  if (isLoading) {
+    return (
+      <div style={containerStyle}>
+        <div style={emptyStateStyle}>
+          <p>Loading scan history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Afficher l'erreur si présente
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={{
+          ...emptyStateStyle,
+          backgroundColor: "rgba(231, 76, 60, 0.1)",
+          border: "1px solid #e74c3c",
+          color: "#e74c3c"
+        }}>
+          <p>Error loading scan history: {error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={containerStyle}>
-      <h2 style={{ marginBottom: "20px", color: "var(--text-color)" }}>Scan History</h2>
-      
       {/* Barre de recherche */}
       <div style={searchBoxStyle}>
         <input
@@ -138,6 +170,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
 const containerStyle = {
   padding: "16px",
   color: "var(--text-color)",
+  width: "100%",
 };
 
 const emptyStateStyle = {
@@ -179,7 +212,7 @@ const scanItemContentStyle = {
 
 const viewButtonStyle = {
   backgroundColor: "var(--accent-color)",
-  color: "white",
+  color: "var(--bg-color)",
   border: "none",
   padding: "8px 12px",
   borderRadius: "4px",

@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import InputUrl from "../components/common/InputUrl";
 import AppLayout from "../components/layout";
 import ScanResultBox from "../pages/ScanResultBox";
-import ScanHistory from "../pages/ScanHistory";
 import ScanService, { ScanResult } from "../services/ScanService";
 
 interface ExtendedScanResult extends ScanResult {
@@ -18,7 +17,6 @@ const Scanner: React.FC = () => {
   const [scanId, setScanId] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
-  const [showHistory, setShowHistory] = useState(false);
   const [scansHistory, setScansHistory] = useState<ExtendedScanResult[]>([]);
   const [showResultDetails, setShowResultDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<ExtendedScanResult[]>([]);
@@ -58,10 +56,14 @@ const Scanner: React.FC = () => {
         
         // Vérifier les différents statuts
         if (resultData.status === 'completed') {
-          setScanResult(resultData);
-          setLoading(false);
-          setScansHistory(prevHistory => [resultData, ...prevHistory]);
-          return; // Arrêter le polling
+        setScanResult(resultData);
+        setLoading(false);
+        setScansHistory(prevHistory => [resultData, ...prevHistory]);
+        
+        // Sauvegarder dans localStorage pour l'historique local
+        ScanService.saveScanToLocalStorage(resultData);
+  
+        return; // Arrêter le polling
         } 
         else if (resultData.status === 'failed') {
           setScanResult(resultData);
@@ -203,9 +205,9 @@ const Scanner: React.FC = () => {
     }
   };
 
-  // Toggle between main view and history
-  const toggleHistory = () => {
-    setShowHistory(!showHistory);
+  // Navigate to scan history page
+  const goToScanHistory = () => {
+    navigate('/scan-history');
   };
 
   // Navigate to scan details
@@ -239,7 +241,7 @@ const Scanner: React.FC = () => {
         <h2 style={{ color: "var(--text-color)" }}>Scan a Website</h2>
         <div>
           <button 
-            onClick={toggleHistory} 
+            onClick={goToScanHistory} 
             style={{
               padding: "8px 16px",
               background: "var(--border-color)",
@@ -251,83 +253,72 @@ const Scanner: React.FC = () => {
               marginLeft:"15px"
             }}
           >
-            {showHistory ? "New Scan" : "Scan History"}
+            Scan History
           </button>
         </div>
       </div>
 
-      {!showHistory ? (
-        <>
-          <InputUrl onSubmit={handleScan} />
+      <InputUrl onSubmit={handleScan} />
 
-          {/* Search Results */}
-          {searchResults && searchResults.length > 0 && (
-            <div style={searchResultsStyle}>
-              <h4>Previously scanned URLs:</h4>
-              <div>
-                {searchResults.map((result, index) => (
-                  <div 
-                    key={index} 
-                    style={searchResultItemStyle}
-                    onClick={() => goToScanDetails(result)}
-                  >
-                    <div>
-                      <strong>{result.url}</strong>
-                      <span style={{
-                        marginLeft: "10px", 
-                        color: result.status === 'completed' ? '#2ecc71' : '#e74c3c'
-                      }}>
-                        {result.status}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "0.8rem", opacity: 0.7 }}>
-                      {new Date(result.created_at).toLocaleDateString()} {new Date(result.created_at).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))}
+      {/* Search Results */}
+      {searchResults && searchResults.length > 0 && (
+        <div style={searchResultsStyle}>
+          <h4>Scanned URLs:</h4>
+          <div>
+            {searchResults.map((result, index) => (
+              <div 
+                key={index} 
+                style={searchResultItemStyle}
+                onClick={() => goToScanDetails(result)}
+              >
+                <div>
+                  <strong>{result.url}</strong>
+                  <span style={{
+                    marginLeft: "10px", 
+                    color: result.status === 'completed' ? '#2ecc71' : '#e74c3c'
+                  }}>
+                    {result.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+                  {new Date(result.created_at).toLocaleDateString()} {new Date(result.created_at).toLocaleTimeString()}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Information area */}
-          <div style={infoBoxStyle}>
-            <strong>Disclaimer:</strong> By clicking <strong>Scan</strong>, our tools will help you:
-            <ul style={{ paddingLeft: "1.5rem", marginTop: "0.5rem" }}>
-              <li>Do a deep scan for vulnerabilities and risks</li>
-              <li>Verify the SSL/TLS configuration</li>
-              <li>Do an advanced HTTP headers check</li>
-              <li>Check for outdated servers and CMS</li>
-            </ul>
+            ))}
           </div>
+        </div>
+      )}
 
-          {/* Warning */}
-          <div style={warningBoxStyle}>
-            <h3 style={{ color: "orange", fontSize: "1.5rem" }}>⚠️ Warning</h3>
-            <p>
-              This tool is for educational and ethical testing purposes only.
-              <br />
-              Make sure you have authorization before scanning any target.
-            </p>
-          </div>
+      {/* Information area */}
+      <div style={infoBoxStyle}>
+        <strong>Disclaimer:</strong> By clicking <strong>Scan</strong>, our tools will help you:
+        <ul style={{ paddingLeft: "1.5rem", marginTop: "0.5rem" }}>
+          <li>Do a deep scan for vulnerabilities and risks</li>
+          <li>Verify the SSL/TLS configuration</li>
+          <li>Do an advanced HTTP headers check</li>
+          <li>Check for outdated servers and CMS</li>
+        </ul>
+      </div>
 
-          {/* Scan Status Box */}
-          {(loading || scanResult) && (
-              <ScanResultBox 
-                loading={loading}
-                status={scanStatus} 
-                url={scanResult?.url || "URL being scanned..."} 
-                statusMessage={getStatusMessage()}
-                error={error}
-                userMessage={""}
-              />
-          )}
+      {/* Warning */}
+      <div style={warningBoxStyle}>
+        <h3 style={{ color: "orange", fontSize: "1.5rem" }}>⚠️ Warning</h3>
+        <p>
+          This tool is for educational and ethical testing purposes only.
+          <br />
+          Make sure you have authorization before scanning any target.
+        </p>
+      </div>
 
-          
-        </>
-      ) : (
-        <ScanHistory 
-          scans={scansHistory} 
-          onSelectScan={goToScanDetails} 
+      {/* Scan Status Box */}
+      {(loading || scanResult) && (
+        <ScanResultBox 
+          loading={loading}
+          status={scanStatus} 
+          url={scanResult?.url || "URL being scanned..."} 
+          statusMessage={getStatusMessage()}
+          error={error}
+          userMessage={""}
         />
       )}
     </AppLayout>
@@ -368,12 +359,11 @@ const warningBoxStyle = {
   margin: "2rem auto", // Centré horizontalement
 };
 
-
-
 const searchResultsStyle = {
   marginTop: "1rem",
   padding: "1rem",
-  backgroundColor: "var(--accent-color)",
+  color:"var(--text-color)",
+  backgroundColor: "var(--bg-color)",
   borderRadius: "8px",
   border: "1px solid var(--accent-color)",
   width: "100%", // Largeur fixe

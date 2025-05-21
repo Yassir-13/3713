@@ -1,16 +1,30 @@
+// src/components/layout/Sidebar.tsx - Version corrigée
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Pour suivre la route active
   
   // Fonction pour gérer la déconnexion
   const handleLogout = () => {
-    // Ici, ajoutez votre logique de déconnexion
-    // Par exemple, supprimer le token d'authentification du localStorage
-    localStorage.removeItem('authToken');
+    // Supprimer le token d'authentification
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     // Rediriger vers la page de connexion
     navigate('/login');
+  };
+
+  // Fonction de navigation sécurisée
+  const navigateTo = (path: string) => (e: React.MouseEvent) => {
+    e.preventDefault(); // Empêcher le comportement par défaut
+    console.log(`Navigating to: ${path}`);
+    navigate(path);
+  };
+
+  // Fonction pour vérifier si un lien est actif
+  const isActive = (path: string) => {
+    return location.pathname === path;
   };
 
   return (
@@ -32,8 +46,8 @@ const Sidebar: React.FC = () => {
         <ul className="nav flex-column p-3">
           <li className="nav-item mb-2">
             <a 
-              className="nav-link text-white active bg-success rounded"
-              onClick={() => navigate('/scanner')}
+              className={`nav-link text-white ${isActive('/scanner') ? 'bg-success rounded' : ''}`}
+              onClick={navigateTo('/scanner')}
               style={{ cursor: 'pointer' }}
             >
               <i className="bi bi-search me-2"></i> New Scan
@@ -41,8 +55,8 @@ const Sidebar: React.FC = () => {
           </li>
           <li className="nav-item mb-2">
             <a 
-              className="nav-link text-white" 
-              onClick={() => navigate('/scanHistory')}
+              className={`nav-link text-white ${isActive('/scan-history') ? 'bg-success rounded' : ''}`}
+              onClick={navigateTo('/scan-history')}
               style={{ cursor: 'pointer' }}
             >
               <i className="bi bi-clock-history me-2"></i> Scan History
@@ -50,8 +64,8 @@ const Sidebar: React.FC = () => {
           </li>
           <li className="nav-item mb-2">
             <a 
-              className="nav-link text-white"
-              onClick={() => navigate('/reports')}
+              className={`nav-link text-white ${isActive('/reports') ? 'bg-success rounded' : ''}`}
+              onClick={navigateTo('/reports')}
               style={{ cursor: 'pointer' }}
             >
               <i className="bi bi-bar-chart me-2"></i> Reports

@@ -1,5 +1,5 @@
 // src/App.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -9,18 +9,19 @@ import ScannerPage from './pages/Scanner';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ScanDetailsPage from './pages/ScanDetailsPage';
-import ScanHistory from './pages/ScanHistory';
+import ScanHistoryPage from './pages/ScanHistoryPage';
 
 const App: React.FC = () => {
 
-  // Vérifie si l'utilisateur est connecté
-  const isAuthenticated = () => {
-    return localStorage.getItem("token") !== null;
-  };
-
   // Composant pour les routes protégées
   const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    if (!isAuthenticated()) {
+    // Vérifier l'authentification au moment du rendu du composant
+    const authenticated = localStorage.getItem("token") !== null;
+    
+    // Afficher un log pour debug (à retirer plus tard)
+    console.log("ProtectedRoute - auth status:", authenticated ? "Authenticated" : "Not authenticated");
+    
+    if (!authenticated) {
       return <Navigate to="/login" replace />;
     }
     return <>{children}</>;
@@ -43,6 +44,14 @@ const App: React.FC = () => {
           element={
             <ProtectedRoute>
               <ScanDetailsPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/scan-history" 
+          element={
+            <ProtectedRoute>
+              <ScanHistoryPage />
             </ProtectedRoute>
           } 
         />

@@ -1,23 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 const Header: React.FC = () => {
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleTheme } = useTheme();
   const { user, logout } = useContext(AuthContext);
 
-useEffect(() => {
-  const savedTheme = localStorage.getItem('theme');
-  if (savedTheme === 'dark') {
-    setDarkMode(true);
-  }
-}, []);
-
-  const toggleTheme = () => {
-    const newTheme = !darkMode;
-    setDarkMode(newTheme);
-    document.body.classList.toggle('dark-mode');
-    localStorage.setItem('theme', newTheme ? 'dark' : 'light');
-  };
 
   return (
     <nav

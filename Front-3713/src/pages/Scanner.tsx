@@ -1,8 +1,8 @@
 // src/pages/Scanner.tsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import InputUrl from "../Scomponents/layout/common/InputUrl";
-import AppLayout from "../Scomponents/layout/layout";
+import InputUrl from "../components/common/InputUrl";
+import AppLayout from "../components/layout";
 import ScanResultBox from "../pages/ScanResultBox";
 import ScanHistory from "../pages/ScanHistory";
 import ScanService, { ScanResult } from "../services/ScanService";
@@ -19,7 +19,7 @@ const Scanner: React.FC = () => {
   const [scanStatus, setScanStatus] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
- const [scansHistory, setScansHistory] = useState<ExtendedScanResult[]>([]);
+  const [scansHistory, setScansHistory] = useState<ExtendedScanResult[]>([]);
   const [showResultDetails, setShowResultDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<ExtendedScanResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -27,13 +27,18 @@ const Scanner: React.FC = () => {
   
   const navigate = useNavigate();
 
-  // Effet pour gérer le polling des résultats
-// Remplacer votre useEffect actuel par celui-ci
-useEffect(() => {
-  let pollingInterval: number | null = null;
+  // Effet pour gérer le polling des résultats avec backoff exponentiel
+  useEffect(() => {
+    let pollingTimeoutId: number | null = null;
+    let currentInterval = 2000; // Commencer à 2 secondes
+    const maxInterval = 30000;   // Maximum 30 secondes
+    const backoffFactor = 1.5;   // Facteur de croissance
+    
+    let consecutiveErrors = 0;
 
-  if (scanId && loading) {
-    pollingInterval = window.setInterval(async () => {
+    const executePoll = async () => {
+      if (!scanId || !loading) return;
+
       try {
         const resultData = await ScanService.getScanResult(scanId);
 
@@ -43,81 +48,77 @@ useEffect(() => {
         // Mettre à jour le statut du scan
         setScanStatus(resultData.status);
         
-        // Enregistrer le message spécifique à l'utilisateur s'il existe
+        // Enregistrer le message utilisateur
         if (resultData.user_message) {
           setUserMessage(resultData.user_message);
         }
         
-        // Vérifier si le scan est terminé ou en erreur
+        // Réinitialiser les erreurs consécutives
+        consecutiveErrors = 0;
+        
+        // Vérifier les différents statuts
         if (resultData.status === 'completed') {
           setScanResult(resultData);
           setLoading(false);
-
-          // Ajouter le scan à l'historique quand il est terminé
-          setScansHistory(prevHistory => [
-            resultData,
-            ...prevHistory
-          ]);
-
-          if (pollingInterval !== null) clearInterval(pollingInterval);
+          setScansHistory(prevHistory => [resultData, ...prevHistory]);
+          return; // Arrêter le polling
         } 
-        // Gestion spéciale pour les statuts d'erreur et de timeout
-        else if (resultData.status === 'failed' || resultData.status === 'timeout') {
+        else if (resultData.status === 'failed') {
           setScanResult(resultData);
-          
-          // Ne pas arrêter le polling pour les timeouts - le backend va relancer le scan
-          if (resultData.status as string === 'timeout') {
-            // Continuer le polling mais réduire la fréquence
-            if (pollingInterval !== null) {
-              clearInterval(pollingInterval);
-              pollingInterval = window.setInterval(async () => {
-                try {
-                  const updatedData = await ScanService.getScanResult(scanId);
-                  setScanStatus(updatedData.status);
-                  
-                  if (updatedData.user_message) {
-                    setUserMessage(updatedData.user_message);
-                  }
-                  
-                  if (updatedData.status === 'completed') {
-                    setScanResult(updatedData);
-                    setLoading(false);
-                    if (pollingInterval !== null) clearInterval(pollingInterval);
-                  }
-                } catch (err: any) {
-                  // Ignorer les erreurs temporaires pendant le polling
-                  console.warn("Erreur de polling:", err.message);
-                }
-              }, 15000); // Vérifier toutes les 15 secondes pour les timeouts
-            }
-          } else {
-            // Pour les vraies erreurs, arrêter le polling
-            setLoading(false);
-            if (pollingInterval !== null) clearInterval(pollingInterval);
-          }
-        } 
-        // Protection après 180 tentatives (15 minutes à 5s d'intervalle)
-        else if (pollCount > 180) {
-          setUserMessage("Le scan prend beaucoup de temps. Vous pouvez revenir plus tard pour voir les résultats.");
           setLoading(false);
-          if (pollingInterval !== null) clearInterval(pollingInterval);
+          return; // Arrêter le polling
         }
-      } catch (err: any) {
-        // Ne pas afficher d'erreur pour les problèmes temporaires de réseau
-        console.warn("Erreur temporaire lors du polling:", err.message);
+        else if (resultData.status === 'timeout') {
+          setScanResult(resultData);
+          // Augmenter l'intervalle pour les timeouts
+          currentInterval = Math.min(currentInterval * backoffFactor, maxInterval);
+        }
         
-        // Seulement afficher l'erreur après plusieurs échecs consécutifs
-        if (pollCount % 5 === 0) { // Tous les 5 échecs
-          setError(`Problème de connexion: ${err.message}. Nous continuons à essayer...`);
+        // Protection après 180 tentatives
+        if (pollCount > 180) {
+          setUserMessage("The scan is taking a long time. You can check back later for results.");
+          setLoading(false);
+          return;
         }
+        
+        // Continuer le polling avec l'intervalle actuel
+        pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
+        
+      } catch (err: any) {
+        // Incrémenter les erreurs consécutives
+        consecutiveErrors++;
+        
+        // Log de débogage
+        console.warn("Polling error:", err.message);
+        
+        // Après 3 erreurs consécutives, augmenter l'intervalle
+        if (consecutiveErrors >= 3) {
+          currentInterval = Math.min(currentInterval * backoffFactor, maxInterval);
+          consecutiveErrors = 0; // Réinitialiser après augmentation
+        }
+        
+        // Afficher un message d'erreur après plusieurs échecs
+        if (consecutiveErrors % 5 === 0) {
+          setError(`Connection issue: ${err.message}. We'll keep trying...`);
+        }
+        
+        // Continuer le polling même en cas d'erreur
+        pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
       }
-    }, 5000); // Vérifier toutes les 5 secondes
-  }
+    };
 
-  return () => {
-    if (pollingInterval !== null) clearInterval(pollingInterval);
-  };
-}, [scanId, loading, pollCount]);
+    // Démarrer le polling immédiatement
+    if (scanId && loading) {
+      executePoll();
+    }
+
+    // Nettoyage
+    return () => {
+      if (pollingTimeoutId !== null) {
+        window.clearTimeout(pollingTimeoutId);
+      }
+    };
+  }, [scanId, loading]); // Dépendances minimales pour éviter les boucles
 
   // Effet pour charger l'historique des scans au chargement du composant
   useEffect(() => {
@@ -126,7 +127,7 @@ useEffect(() => {
         const historyData = await ScanService.getScanHistory();
         setScansHistory(historyData);
       } catch (err: any) {
-        console.error("Erreur lors du chargement de l'historique:", err.message);
+        console.error("Error loading history:", err.message);
       }
     };
 
@@ -164,7 +165,7 @@ useEffect(() => {
         setScanId(data.scan_id);
         setScanStatus('pending');
       } else {
-        throw new Error("ID du scan non reçu");
+        throw new Error("Scan ID not received");
       }
       
     } catch (err: any) {
@@ -174,82 +175,49 @@ useEffect(() => {
     }
   };
 
-  // Fonction pour afficher le message de statut approprié
-  // Remplacer la fonction entière par celle-ci
-const getStatusMessage = () => {
-  // Utiliser le message personnalisé du backend s'il existe
-  if (userMessage) {
-    return userMessage;
-  }
-  
-  if (!scanStatus) return "Initialisation du scan...";
-  
-  switch (scanStatus) {
-    case 'pending':
-      return "Le scan est en file d'attente...";
-    case 'running':
-      if (pollCount > 60) {
-        return `Scan en cours (durée: ${Math.floor(pollCount/12)} min). Ce site nécessite une analyse approfondie...`;
-      }
-      return `Scan en cours (vérification ${pollCount})...`;
-    case 'completed':
-      return "Scan terminé avec succès!";
-    case 'failed':
-      return "Le scan a échoué. Nous allons essayer de le relancer automatiquement.";
-    case 'timeout':
-      return "Le scan prend plus de temps que prévu. Veuillez patienter, nous continuons l'analyse en arrière-plan.";
-    default:
-      return `Statut: ${scanStatus}`;
-  }
-};
+  // Function to display appropriate status message
+  const getStatusMessage = () => {
+    // Use custom message from backend if available
+    if (userMessage) {
+      return userMessage;
+    }
+    
+    if (!scanStatus) return "Initializing scan...";
+    
+    switch (scanStatus) {
+      case 'pending':
+        return "Scan is queued...";
+      case 'running':
+        if (pollCount > 60) {
+          return `Scan in progress (duration: ${Math.floor(pollCount/12)} min). This site requires in-depth analysis...`;
+        }
+        return `Scan in progress (check ${pollCount})...`;
+      case 'completed':
+        return "Scan completed successfully!";
+      case 'failed':
+        return "Scan failed. We'll try to restart it automatically.";
+      case 'timeout':
+        return "Scan is taking longer than expected. Please wait, we continue the analysis in the background.";
+      default:
+        return `Status: ${scanStatus}`;
+    }
+  };
 
-  // Fonction pour basculer entre la vue principale et l'historique
+  // Toggle between main view and history
   const toggleHistory = () => {
     setShowHistory(!showHistory);
   };
 
-  // Fonction pour naviguer vers les détails du scan
+  // Navigate to scan details
   const goToScanDetails = (scan: ExtendedScanResult) => {
-
-    // Utiliser scan.id ou scan.scan_id selon ce qui est disponible
+    // Use scan.id or scan.scan_id depending on what's available
     const scanIdentifier = scan.id || scan.scan_id;
     
     if (scanIdentifier) {
       navigate(`/scan/${scanIdentifier}`);
     } else {
-      setError("ID du scan manquant. Impossible d'afficher les détails.");
+      setError("Missing scan ID. Cannot display details.");
     }
-  };
-
-  // Fonction pour tester le scan sans API (pour déboguer)
-  const testScanSimulation = () => {
-    setLoading(true);
-    setScanResult(null);
-    setError(null);
-    setScanId("test-scan-id");
-    setScanStatus("pending");
-    setPollCount(0);
-    setShowResultDetails(false);
-    
-    // Simuler un changement de statut après 3 secondes
-    setTimeout(() => {
-      setScanStatus("running");
-      
-      // Simuler la fin du scan après 6 secondes
-      setTimeout(() => {
-        setScanStatus("completed");
-        setScanResult({
-          id: "test-scan-id",
-          scan_id: "test-scan-id",
-          url: "https://example.com",
-          status: "completed",
-          created_at: new Date().toISOString(),
-          whatweb_output: "Simulation de résultat WhatWeb",
-          sslyze_output: "Simulation de résultat SSLyze"
-        });
-        setLoading(false);
-      }, 3000);
-    }, 3000);
   };
 
   return (
@@ -263,11 +231,11 @@ const getStatusMessage = () => {
           borderRadius: "5px",
           color: "#e74c3c"
         }}>
-          <strong>Erreur:</strong> {error}
+          <strong>Error:</strong> {error}
         </div>
       )}
       
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width:"100%" }}>
         <h2 style={{ color: "var(--text-color)" }}>Scan a Website</h2>
         <div>
           <button 
@@ -279,25 +247,11 @@ const getStatusMessage = () => {
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
-              marginRight: "10px"
+              marginRight: "10px",
+              marginLeft:"15px"
             }}
           >
-            {showHistory ? "Nouveau Scan" : "Historique des Scans"}
-          </button>
-          
-          {/* Bouton de test de simulation */}
-          <button 
-            onClick={testScanSimulation} 
-            style={{
-              padding: "8px 16px",
-              background: "#3498db",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer"
-            }}
-          >
-            Test (Simulation)
+            {showHistory ? "New Scan" : "Scan History"}
           </button>
         </div>
       </div>
@@ -306,10 +260,10 @@ const getStatusMessage = () => {
         <>
           <InputUrl onSubmit={handleScan} />
 
-          {/* Résultats de recherche */}
+          {/* Search Results */}
           {searchResults && searchResults.length > 0 && (
             <div style={searchResultsStyle}>
-              <h4>URLs déjà scannées:</h4>
+              <h4>Previously scanned URLs:</h4>
               <div>
                 {searchResults.map((result, index) => (
                   <div 
@@ -335,7 +289,7 @@ const getStatusMessage = () => {
             </div>
           )}
 
-          {/* Zone d'information */}
+          {/* Information area */}
           <div style={infoBoxStyle}>
             <strong>Disclaimer:</strong> By clicking <strong>Scan</strong>, our tools will help you:
             <ul style={{ paddingLeft: "1.5rem", marginTop: "0.5rem" }}>
@@ -346,7 +300,7 @@ const getStatusMessage = () => {
             </ul>
           </div>
 
-          {/* Avertissement */}
+          {/* Warning */}
           <div style={warningBoxStyle}>
             <h3 style={{ color: "orange", fontSize: "1.5rem" }}>⚠️ Warning</h3>
             <p>
@@ -356,82 +310,19 @@ const getStatusMessage = () => {
             </p>
           </div>
 
-          {/* Box de Statut du Scan */}
+          {/* Scan Status Box */}
           {(loading || scanResult) && (
               <ScanResultBox 
                 loading={loading}
                 status={scanStatus} 
-                url={scanResult?.url || "URL en cours de scan..."} 
+                url={scanResult?.url || "URL being scanned..."} 
                 statusMessage={getStatusMessage()}
                 error={error}
-                userMessage={userMessage}
+                userMessage={""}
               />
           )}
 
-          {/* Résultat détaillé si demandé */}
-          {scanResult && showResultDetails && (
-            <div style={resultStyle}>
-              <h3>Résultats détaillés:</h3>
-              
-              {/* WhatWeb Results */}
-              {scanResult.whatweb_output && (
-                <div style={{ marginBottom: "1rem" }}>
-                  <h4>WhatWeb Results:</h4>
-                  <pre style={{ 
-                    whiteSpace: "pre-wrap", 
-                    backgroundColor: "rgba(0,0,0,0.2)", 
-                    padding: "1rem",
-                    borderRadius: "5px"
-                  }}>
-                    {scanResult.whatweb_output}
-                  </pre>
-                </div>
-              )}
-              
-              {/* SSLyze Results */}
-              {scanResult.sslyze_output && (
-                <div style={{ marginBottom: "1rem" }}>
-                  <h4>SSLyze Results:</h4>
-                  <pre style={{ 
-                    whiteSpace: "pre-wrap", 
-                    backgroundColor: "rgba(0,0,0,0.2)", 
-                    padding: "1rem",
-                    borderRadius: "5px"
-                  }}>
-                    {scanResult.sslyze_output}
-                  </pre>
-                </div>
-              )}
-              
-              {/* ZAP Results */}
-              {scanResult.zap_output && scanResult.zap_output !== 'ZAP simulation' && (
-                <div style={{ marginBottom: "1rem" }}>
-                  <h4>ZAP Results:</h4>
-                  <pre style={{ 
-                    whiteSpace: "pre-wrap", 
-                    backgroundColor: "rgba(0,0,0,0.2)", 
-                    padding: "1rem",
-                    borderRadius: "5px"
-                  }}>
-                    {scanResult.zap_output}
-                  </pre>
-                </div>
-              )}
-              
-              {/* Error if any */}
-              {scanResult.error && (
-                <div style={{ 
-                  marginTop: "1rem", 
-                  color: "red", 
-                  border: "1px solid red",
-                  padding: "0.5rem",
-                  borderRadius: "5px"
-                }}>
-                  <strong>Error:</strong> {scanResult.error}
-                </div>
-              )}
-            </div>
-          )}
+          
         </>
       ) : (
         <ScanHistory 
@@ -453,6 +344,12 @@ const infoBoxStyle = {
   backgroundColor: "rgba(255, 255, 255, 0.05)",
   color: "var(--text-color)",
   fontSize: "0.9rem",
+  width: "100%", // Largeur fixe à 100% du conteneur parent
+  maxWidth: "800px", // Limite maximale pour les grands écrans
+  boxSizing: "border-box" as const, // Important pour que padding soit inclus dans width
+  height: "auto", // Hauteur automatique selon le contenu
+  minHeight: "fit-content", // S'assure que la hauteur s'adapte au contenu minimum
+  margin: "2rem auto", // Centré horizontalement
 };
 
 const warningBoxStyle = {
@@ -464,24 +361,26 @@ const warningBoxStyle = {
   boxShadow: "0 0 12px red",
   color: "var(--text-color)",
   fontFamily: "'Orbitron', sans-serif",
+  width: "100%", // Largeur fixe à 100% du conteneur parent
+  maxWidth: "800px", // Limite maximale pour les grands écrans
+  boxSizing: "border-box" as const,
+  height: "auto", // Hauteur automatique
+  margin: "2rem auto", // Centré horizontalement
 };
 
-const resultStyle = {
-  marginTop: "2rem",
-  padding: "1.5rem",
-  border: "2px dashed var(--accent-color)",
-  backgroundColor: "rgba(255, 255, 255, 0.03)",
-  borderRadius: "10px",
-  color: "var(--text-color)",
-  maxWidth: "800px",
-};
+
 
 const searchResultsStyle = {
   marginTop: "1rem",
   padding: "1rem",
-  backgroundColor: "rgba(255, 255, 255, 0.05)",
+  backgroundColor: "var(--accent-color)",
   borderRadius: "8px",
   border: "1px solid var(--accent-color)",
+  width: "100%", // Largeur fixe
+  maxWidth: "800px", // Limite maximale
+  boxSizing: "border-box" as const,
+  height: "auto", // Hauteur adaptative
+  margin: "1rem auto", // Centré horizontalement
 };
 
 const searchResultItemStyle = {

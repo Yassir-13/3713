@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useEffect } from 'react';
+import React from 'react';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -12,14 +12,6 @@ import ScanDetailsPage from './pages/ScanDetailsPage';
 import ScanHistory from './pages/ScanHistory';
 
 const App: React.FC = () => {
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
-  }, []);
 
   // Vérifie si l'utilisateur est connecté
   const isAuthenticated = () => {

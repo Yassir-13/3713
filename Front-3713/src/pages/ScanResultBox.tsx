@@ -6,7 +6,7 @@ interface ScanResultBoxProps {
   url: string;
   statusMessage: string;
   error: string | null;
-  userMessage?: string | null; // Ajout de cette prop uniquement
+  userMessage?: string | null;
 }
 
 const ScanResultBox: React.FC<ScanResultBoxProps> = ({
@@ -15,21 +15,21 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
   url,
   statusMessage,
   error,
-  userMessage // Ajout de cette prop dans la destructuration
+  userMessage
 }) => {
   const getStatusColor = () => {
     switch (status) {
       case "completed":
-        return "#2ecc71"; // vert
+        return "#2ecc71"; // green
       case "failed":
-        return "#e74c3c"; // rouge
-      case "timeout":  // Ajout de ce cas
-        return "#e67e22"; // orange foncé
+        return "#e74c3c"; // red
+      case "timeout":
+        return "#e67e22"; // dark orange
       case "pending":
       case "running":
-        return "#f39c12"; // orange/jaune
+        return "#f39c12"; // orange/yellow
       default:
-        return "#3498db"; // bleu
+        return "#3498db"; // blue
     }
   };
 
@@ -42,6 +42,10 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
       backgroundColor: "rgba(0, 0, 0, 0.2)",
       boxShadow: `0 0 12px ${getStatusColor()}`,
       color: "var(--text-color)",
+      width: "100%",
+      maxWidth: "800px", // Pour correspondre aux autres boîtes
+      boxSizing: "border-box" as const, // Pour inclure padding dans width
+      margin: "2rem auto", // Centrer la boîte
     }}>
       <div style={{
         display: "flex",
@@ -72,26 +76,23 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         borderRadius: "5px",
         marginBottom: "1rem",
       }}>
-        <p style={{ margin: 0 }}>
-          {loading ? (
-            <span style={{ display: "flex", alignItems: "center" }}>
-              <span style={{
-                display: "inline-block",
-                width: "12px",
-                height: "12px",
-                borderRadius: "50%",
-                backgroundColor: getStatusColor(),
-                marginRight: "10px",
-                animation: "pulse 1s infinite",
-              }} />
-              {statusMessage}
-            </span>
-          ) : (
-            statusMessage
+        {/* Un seul message avec indicateur de chargement conditionnel */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          {loading && (
+            <span style={{
+              display: "inline-block",
+              width: "12px",
+              height: "12px",
+              borderRadius: "50%",
+              backgroundColor: getStatusColor(),
+              marginRight: "10px",
+              animation: "pulse 1s infinite",
+            }} />
           )}
-        </p>
+          <p style={{ margin: 0 }}>{statusMessage}</p>
+        </div>
         
-        {/* Ligne ajoutée pour utiliser userMessage si disponible */}
+        {/* Message utilisateur séparé uniquement s'il est disponible */}
         {userMessage && <p style={{ marginTop: "8px", fontSize: "0.9rem" }}>{userMessage}</p>}
       </div>
 
@@ -108,14 +109,12 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         </div>
       )}
 
-      {/* Modifié pour gérer les cas timeout et failed */}
       {(status === "completed" || status === "failed" || status === "timeout" || !loading) && (
         <button
-          
           style={{
             padding: "8px 16px",
             backgroundColor: "var(--accent-color)",
-            color: "white",
+            color: "var(--bg-color)",
             border: "none",
             borderRadius: "4px",
             cursor: "pointer",

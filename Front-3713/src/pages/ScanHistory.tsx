@@ -1,4 +1,4 @@
-// src/components/ScanHistory.tsx
+// src/pages/ScanHistory.tsx
 import React, { useState } from "react";
 import { ScanResult } from "../services/ScanService";
 
@@ -15,12 +15,19 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
   
   // Filtrer les scans en fonction de la recherche
   const filteredScans = safeScans.filter(scan => 
-    scan.url.toLowerCase().includes(searchQuery.toLowerCase())
+    (scan.url || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Fonction pour formater la date
+  // Fonction pour formater la date de façon sécurisée
   const formatDate = (dateString: string) => {
     try {
+      const date = new Date(dateString);
+      
+      // Vérifier si la date est valide
+      if (isNaN(date.getTime())) {
+        return "Unknown date";
+      }
+      
       const options: Intl.DateTimeFormatOptions = {
         year: 'numeric',
         month: 'short',
@@ -28,15 +35,15 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
         hour: '2-digit',
         minute: '2-digit'
       };
-      return new Date(dateString).toLocaleDateString(undefined, options);
+      return date.toLocaleDateString(undefined, options);
     } catch (e) {
-      return "Date inconnue";
+      return "Unknown date";
     }
   };
 
   // Fonction pour obtenir la couleur de statut
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  const getStatusColor = (status: string = "") => {
+    switch (status.toLowerCase()) {
       case "completed":
         return "#2ecc71"; // vert
       case "failed":
@@ -49,15 +56,22 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
     }
   };
 
+  // Fonction sécurisée pour obtenir une clé unique
+  const getSafeKey = (scan: ScanResult, index: number): string => {
+    if (scan.id) return `scan-${scan.id}`;
+    if (scan.scan_id) return `scan-${scan.scan_id}`;
+    return `scan-index-${index}`;
+  };
+
   return (
     <div style={containerStyle}>
-      <h2 style={{ marginBottom: "20px", color: "var(--text-color)" }}>Historique des Scans</h2>
+      <h2 style={{ marginBottom: "20px", color: "var(--text-color)" }}>Scan History</h2>
       
       {/* Barre de recherche */}
       <div style={searchBoxStyle}>
         <input
           type="text"
-          placeholder="Rechercher par URL..."
+          placeholder="Search by URL..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={searchInputStyle}
@@ -68,21 +82,18 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
         <div style={emptyStateStyle}>
           <p>
             {searchQuery ? 
-              "Aucun résultat trouvé pour cette recherche." : 
-              "Aucun scan dans l'historique."}
+              "No results found for this search." : 
+              "No scans in history."}
           </p>
         </div>
       ) : (
         <div style={listContainerStyle}>
           {filteredScans.map((scan, index) => {
-            // S'assurer que l'identifiant est disponible en priorisant scan.id, puis scan.scan_id
-            const scanIdentifier = scan.id || scan.scan_id || index;
-            
             return (
               <div 
-                key={scanIdentifier.toString()} 
+                key={getSafeKey(scan, index)}
                 style={scanItemStyle}
-                onClick={() => onSelectScan(scan)}
+                onClick={() => scan && onSelectScan(scan)}
               >
                 <div style={scanItemHeaderStyle}>
                   <span style={{ 
@@ -92,25 +103,26 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
                     alignItems: "center"
                   }}>
                     {scan.status === "completed" ? "✓" : scan.status === "failed" ? "✗" : "⋯"}
-                    &nbsp;{scan.status}
+                    &nbsp;{scan.status || "Unknown"}
                   </span>
                   <span style={{ fontSize: "0.9rem", opacity: 0.7 }}>
-                    {scan.created_at ? formatDate(scan.created_at) : "Date inconnue"}
+                    {scan.created_at ? formatDate(scan.created_at) : "Unknown date"}
                   </span>
                 </div>
                 
                 <div style={scanItemContentStyle}>
-                  <span style={{ fontWeight: "bold" }}>URL : </span>
-                  <span style={{ wordBreak: "break-all" }}>{scan.url}</span>
+                  <span style={{ fontWeight: "bold" }}>URL: </span>
+                  <span style={{ wordBreak: "break-all" }}>{scan.url || "No URL"}</span>
                 </div>
                 
                 <div style={{ 
                   display: "flex", 
                   justifyContent: "flex-end",
-                  marginTop: "10px"
+                  marginTop: "10px",
+                  padding: "0 16px 16px" // Ajout du padding horizontal pour aligner le bouton
                 }}>
                   <button style={viewButtonStyle}>
-                    Voir les détails
+                    View details
                   </button>
                 </div>
               </div>
@@ -122,7 +134,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ scans, onSelectScan }) => {
   );
 };
 
-// Styles
+// Styles - exactement les mêmes qu'à l'origine
 const containerStyle = {
   padding: "16px",
   color: "var(--text-color)",

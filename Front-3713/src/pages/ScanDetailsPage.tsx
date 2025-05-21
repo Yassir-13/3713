@@ -1,7 +1,7 @@
 // src/pages/ScanDetailsPage.tsx
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import AppLayout from "../Scomponents/layout/layout";
+import AppLayout from "../components/layout";
 import ScanService, { ScanResult } from "../services/ScanService";
 
 const ScanDetailsContent: React.FC = () => {

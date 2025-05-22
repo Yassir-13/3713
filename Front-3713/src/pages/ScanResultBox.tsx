@@ -7,6 +7,8 @@ interface ScanResultBoxProps {
   statusMessage: string;
   error: string | null;
   userMessage?: string | null;
+  scanId?: string | null; // Ajout du scanId
+  onViewDetails?: () => void; // Fonction optionnelle pour voir les détails
 }
 
 const ScanResultBox: React.FC<ScanResultBoxProps> = ({
@@ -15,7 +17,9 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
   url,
   statusMessage,
   error,
-  userMessage
+  userMessage,
+  scanId,
+  onViewDetails
 }) => {
   const getStatusColor = () => {
     switch (status) {
@@ -33,6 +37,13 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
     }
   };
 
+  // Fonction pour gérer le clic sur le bouton
+  const handleViewDetails = () => {
+    if (onViewDetails && scanId) {
+      onViewDetails();
+    }
+  };
+
   return (
     <div style={{
       marginTop: "2rem",
@@ -43,9 +54,9 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
       boxShadow: `0 0 12px ${getStatusColor()}`,
       color: "var(--text-color)",
       width: "100%",
-      maxWidth: "800px", // Pour correspondre aux autres boîtes
-      boxSizing: "border-box" as const, // Pour inclure padding dans width
-      margin: "2rem auto", // Centrer la boîte
+      maxWidth: "800px",
+      boxSizing: "border-box" as const,
+      margin: "2rem auto",
     }}>
       <div style={{
         display: "flex",
@@ -76,7 +87,6 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         borderRadius: "5px",
         marginBottom: "1rem",
       }}>
-        {/* Un seul message avec indicateur de chargement conditionnel */}
         <div style={{ display: "flex", alignItems: "center" }}>
           {loading && (
             <span style={{
@@ -92,7 +102,6 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
           <p style={{ margin: 0 }}>{statusMessage}</p>
         </div>
         
-        {/* Message utilisateur séparé uniquement s'il est disponible */}
         {userMessage && <p style={{ marginTop: "8px", fontSize: "0.9rem" }}>{userMessage}</p>}
       </div>
 
@@ -109,8 +118,10 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
         </div>
       )}
 
-      {(status === "completed" || status === "failed" || status === "timeout" || !loading) && (
+      {/* Bouton View Details - seulement si on a un scanId et une fonction onViewDetails */}
+      {scanId && onViewDetails && (status === "completed" || status === "failed" || status === "timeout" || !loading) && (
         <button
+          onClick={handleViewDetails}
           style={{
             padding: "8px 16px",
             backgroundColor: "var(--accent-color)",

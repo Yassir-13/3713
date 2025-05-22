@@ -310,7 +310,7 @@ const Scanner: React.FC = () => {
         </p>
       </div>
 
-      {/* Scan Status Box */}
+{/* Scan Status Box */}
       {(loading || scanResult) && (
         <ScanResultBox 
           loading={loading}
@@ -319,6 +319,8 @@ const Scanner: React.FC = () => {
           statusMessage={getStatusMessage()}
           error={error}
           userMessage={""}
+          scanId={scanId} // Passez le scanId
+          onViewDetails={scanResult ? () => goToScanDetails(scanResult) : undefined} // Fonction conditionnelle
         />
       )}
     </AppLayout>

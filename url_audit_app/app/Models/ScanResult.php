@@ -17,6 +17,7 @@ class ScanResult extends Model
         'whatweb_output',
         'sslyze_output',
         'zap_output',
+        'nuclei_output',
         'error',
         'gemini_analysis'  // Ajoutez ce champ
     ];

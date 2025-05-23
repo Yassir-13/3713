@@ -123,18 +123,19 @@ class ScanController extends Controller
         }
         // Retourner les résultats, incluant l'analyse Gemini si disponible
         return response()->json([
-            'id' => $scan->scan_id,
-            'scan_id' => $scan->scan_id,
-            'url' => $scan->url,
-            'status' => $scan->status ?? 'unknown',
-            'created_at' => $scan->created_at,
-            'whatweb_output' => $scan->whatweb_output,
-            'sslyze_output' => $scan->sslyze_output,
-            'zap_output' => $scan->zap_output,
-            'error' => $scan->error,
-            'gemini_analysis' => $scan->gemini_analysis,
-            'user_message' => $clientMessage
-        ]);
+        'id' => $scan->scan_id,
+        'scan_id' => $scan->scan_id,
+        'url' => $scan->url,
+        'status' => $scan->status ?? 'unknown',
+        'created_at' => $scan->created_at,
+        'whatweb_output' => $scan->whatweb_output,
+        'sslyze_output' => $scan->sslyze_output,
+        'zap_output' => $scan->zap_output,
+        'nuclei_output' => $scan->nuclei_output, 
+        'error' => $scan->error,
+        'gemini_analysis' => $scan->gemini_analysis,
+        'user_message' => $clientMessage
+    ]);
     } catch (\Exception $e) {
         Log::error("Error retrieving scan results: " . $e->getMessage());
         

@@ -29,7 +29,7 @@ const Header: React.FC = () => {
             </>
           ) : (
             <>
-              <span style={{ color: 'var(--text-color)' }}>Bienvenue, {user.name}</span>
+              <span style={{ color: 'var(--text-color)' }}>Welcome, {user.name}</span>
               <button onClick={logout} className="btn btn-danger">Logout</button>
             </>
           )}

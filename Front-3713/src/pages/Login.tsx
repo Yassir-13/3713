@@ -51,7 +51,7 @@ const Login: React.FC = () => {
       navigate(redirectPath);
       
     } catch (err: any) {
-      setError('Identifiants incorrects ou erreur serveur');
+      setError('Invalid credentials or server error');
     } finally {
       setLoading(false);
     }
@@ -119,7 +119,7 @@ const Login: React.FC = () => {
             }}
             disabled={loading}
           >
-            {loading ? 'Connexion en cours...' : 'Log in'}
+            {loading ? 'Logging in...' : 'Log in'}
           </button>
         </form>
       </div>

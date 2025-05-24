@@ -694,7 +694,7 @@ FORMAT DU RAPPORT (NE PAS MENTIONNER CES CATÉGORIES EXPLICITEMENT):
 4. PROBLÈMES TECHNIQUES DÉTECTÉS
    - [Versions obsolètes ou configurations dangereuses identifiées]
 
-Fournir UNIQUEMENT et DIRECTEMENT ce rapport structuré, sans mentionner les outils ni les méthodes d'analyse utilisés.
+Fournir UNIQUEMENT et DIRECTEMENT ce rapport structuré, sans mentionner les outils ni les méthodes d'analyse utilisés et fait tout ca en anglais.
 EOT;
         
         return $promptContent;

@@ -224,19 +224,6 @@ const Scanner: React.FC = () => {
 
   return (
     <AppLayout>
-      {error && (
-        <div style={{
-          margin: "20px 0",
-          padding: "15px",
-          backgroundColor: "rgba(231, 76, 60, 0.1)",
-          border: "1px solid #e74c3c",
-          borderRadius: "5px",
-          color: "#e74c3c"
-        }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-      
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width:"100%" }}>
         <h2 style={{ color: "var(--text-color)" }}>Scan a Website</h2>
         <div>

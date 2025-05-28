@@ -132,9 +132,8 @@ const ScanResultBox: React.FC<ScanResultBoxProps> = ({
             fontWeight: "bold",
           }}
         >
-          {status === "completed" ? "View Full Report" :
-           status === "failed" ? "View Details" :
-           status === "timeout" ? "Check Latest Results" : "Check Progress"}
+          {status === "completed" ?"View Results" :"View Results" }
+      
         </button>
       )}
     </div>

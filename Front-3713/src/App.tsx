@@ -1,4 +1,5 @@
 // src/App.tsx
+// 🔄 App principal avec route Settings A2F
 import React, { useEffect, useState } from 'react';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -8,6 +9,7 @@ import HomePage from './pages/HomePage';
 import ScannerPage from './pages/Scanner';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Settings from './pages/Settings'; // 🆕 AJOUTÉ
 import ScanDetailsPage from './pages/ScanDetailsPage';
 import ScanHistoryPage from './pages/ScanHistoryPage';
 
@@ -52,6 +54,15 @@ const App: React.FC = () => {
           element={
             <ProtectedRoute>
               <ScanHistoryPage />
+            </ProtectedRoute>
+          } 
+        />
+        {/* 🆕 NOUVELLE ROUTE SETTINGS */}
+        <Route 
+          path="/settings" 
+          element={
+            <ProtectedRoute>
+              <Settings />
             </ProtectedRoute>
           } 
         />

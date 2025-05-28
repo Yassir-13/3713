@@ -1,4 +1,4 @@
-// src/components/layout/Sidebar.tsx - Version corrigée
+// src/components/Sidebar.tsx - Version avec Settings A2F
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -69,6 +69,17 @@ const Sidebar: React.FC = () => {
               style={{ cursor: 'pointer' }}
             >
               <i className="bi bi-bar-chart me-2"></i> Reports
+            </a>
+          </li>
+          
+          {/* 🆕 NOUVEAU LIEN SETTINGS */}
+          <li className="nav-item mb-2">
+            <a 
+              className={`nav-link text-white ${isActive('/settings') ? 'bg-success rounded' : ''}`}
+              onClick={navigateTo('/settings')}
+              style={{ cursor: 'pointer' }}
+            >
+              <i className="bi bi-gear me-2"></i> Settings
             </a>
           </li>
         </ul>

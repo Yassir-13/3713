@@ -56,8 +56,21 @@ class User extends Authenticatable
     }
 
     /**
-     * 🔗 RELATION avec ScanResult
+     * 🔗 RELATIONS
      */
+      public function scanHistory()
+    {
+        return $this->hasMany(ScanHistory::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Relation avec les scans favoris
+     */
+    public function favoritScans()
+    {  
+        return $this->hasMany(ScanHistory::class)->where('is_favorite', true);
+    }
+
     public function scans()
     {
         return $this->hasMany(\App\Models\ScanResult::class);

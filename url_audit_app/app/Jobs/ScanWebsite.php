@@ -23,7 +23,7 @@ class ScanWebsite implements ShouldQueue
     public $tries = 3; // Augmenté pour les reprises
     public $backoff = 120; // 2 minutes entre les essais
 
-     public function __construct($url, $scan_id)
+    public function __construct($url, $scan_id)
     {
         // Validation et nettoyage de l'URL dès la construction
         $this->url = $this->sanitizeAndValidateUrl($url);
@@ -60,9 +60,10 @@ class ScanWebsite implements ShouldQueue
             $whatweb = $this->runSecureCommand('whatweb', ['-v'], $this->url, 60);
             Log::info("WhatWeb terminé", ['bytes' => strlen($whatweb)]);
             
-            // ÉTAPE 2: SSLyze - SÉCURISÉ
+            // 🔥 ÉTAPE 2: SSLyze - CORRECTION : hostname:port seulement !
             Log::info("Démarrage SSLyze sécurisé");
-            $sslyze = $this->runSecureCommand('sslyze', [], $this->url, 120);
+            $sslHost = $this->extractHostFromUrl($this->url);
+            $sslyze = $this->runSecureCommand('sslyze', [], $sslHost, 120);
             Log::info("SSLyze terminé", ['bytes' => strlen($sslyze)]);
             
             // ÉTAPE 3: Nuclei - SÉCURISÉ
@@ -124,10 +125,28 @@ class ScanWebsite implements ShouldQueue
         }
     }
 
+    // 🆕 NOUVELLE MÉTHODE CRITIQUE : Extraire hostname:port pour SSLyze
+    private function extractHostFromUrl($url)
+    {
+        $components = parse_url($url);
+        $host = $components['host'] ?? '';
+        $port = $components['port'] ?? null;
+        
+        // Pour HTTPS, port par défaut = 443
+        // Pour HTTP, port par défaut = 80
+        if (!$port) {
+            $scheme = $components['scheme'] ?? 'https';
+            $port = ($scheme === 'https') ? 443 : 80;
+        }
+        
+        // SSLyze attend "hostname:port"
+        return $host . ':' . $port;
+    }
+
     /**
      * VALIDATION ET NETTOYAGE SÉCURISÉ DES URLs
      */
-     private function sanitizeAndValidateUrl($url)
+    private function sanitizeAndValidateUrl($url)
     {
         // Étape 1: Nettoyage basique
         $url = trim($url);
@@ -170,7 +189,7 @@ class ScanWebsite implements ShouldQueue
     }
 
     /**
-     * NOUVELLE MÉTHODE: Exécution sécurisée des commandes
+     * 🔥 MÉTHODE CORRIGÉE: Exécution sécurisée des commandes
      */
     private function runSecureCommand($tool, $args = [], $target = null, $timeout = 60)
     {
@@ -195,10 +214,24 @@ class ScanWebsite implements ShouldQueue
         // Étape 3: Construction sécurisée de la commande
         $command = [$toolPath];
         
-        // Ajout des arguments sécurisés
+        // 🔥 CORRECTION CRITIQUE : Validation spécifique par outil
         foreach ($args as $arg) {
-            if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
-                throw new \InvalidArgumentException("Argument non sécurisé: $arg");
+            if ($tool === 'nuclei') {
+                // Pour Nuclei : permettre templates avec slashes + options communes
+                if (!preg_match('/^[a-zA-Z0-9._\/-]+$/', $arg) && 
+                    !in_array($arg, ['-jsonl', '-silent', '-no-color', '-u', '-t'])) {
+                    throw new \InvalidArgumentException("Argument Nuclei non sécurisé: $arg");
+                }
+            } elseif ($tool === 'sslyze') {
+                // Pour SSLyze : validation plus stricte (pas de slashes)
+                if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
+                    throw new \InvalidArgumentException("Argument SSLyze non sécurisé: $arg");
+                }
+            } else {
+                // Pour WhatWeb et autres : validation générale
+                if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
+                    throw new \InvalidArgumentException("Argument non sécurisé: $arg");
+                }
             }
             $command[] = $arg;
         }
@@ -315,7 +348,7 @@ class ScanWebsite implements ShouldQueue
     }
 
     /**
-     * NUCLEI ULTRA-OPTIMISÉ 3713 - VERSION SÉCURISÉE
+     * NUCLEI ULTRA-OPTIMISÉ 3713 - VERSION SÉCURISÉE CORRIGÉE
      */
     protected function runNucleiUltraOptimizedSecure($url)
     {
@@ -324,39 +357,39 @@ class ScanWebsite implements ShouldQueue
         // URL déjà validée dans le constructeur, pas besoin de re-valider
         
         try {
-            // COMMANDES SÉCURISÉES avec les VRAIS templates Nuclei v3
+            // 🔥 COMMANDES CORRIGÉES avec les VRAIS templates Nuclei v3
             $commands = [
                 'exposures_critical' => [
                     'tool' => 'nuclei',
-                    'args' => ['-t', 'http/exposures/', '-jsonl', '-silent', '-no-color'],
+                    'args' => ['-t', 'http/exposures/', '-jsonl', '-silent', '-no-color', '-u'],
                     'critical' => true,
                     'timeout' => 180,
                     'description' => 'Exposures critiques'
                 ],
                 'technologies' => [
                     'tool' => 'nuclei',
-                    'args' => ['-t', 'http/technologies/', '-jsonl', '-silent', '-no-color'],
+                    'args' => ['-t', 'http/technologies/', '-jsonl', '-silent', '-no-color', '-u'],
                     'timeout' => 70,
                     'critical' => true,
                     'description' => 'Détection technologies'
                 ],
                 'misconfigurations' => [
                     'tool' => 'nuclei',
-                    'args' => ['-t', 'http/misconfiguration/', '-jsonl', '-silent', '-no-color'],
+                    'args' => ['-t', 'http/misconfiguration/', '-jsonl', '-silent', '-no-color', '-u'],
                     'timeout' => 180,
                     'critical' => true,
                     'description' => 'Erreurs de configuration'
                 ],
                 'takeovers' => [
                     'tool' => 'nuclei',
-                    'args' => ['-t', 'http/takeovers/', '-jsonl', '-silent', '-no-color'],
+                    'args' => ['-t', 'http/takeovers/', '-jsonl', '-silent', '-no-color', '-u'],
                     'timeout' => 120,
                     'critical' => false,
                     'description' => 'Vulnérabilités de takeover'
                 ],
                 'CVES' => [
                     'tool' => 'nuclei',
-                    'args' => ['-t', 'http/cves/', '-jsonl', '-silent', '-no-color'],
+                    'args' => ['-t', 'http/cves/', '-jsonl', '-silent', '-no-color', '-u'],
                     'timeout' => 600,
                     'critical' => true,
                     'description' => 'Détection CVEs'
@@ -378,11 +411,11 @@ class ScanWebsite implements ShouldQueue
                 try {
                     $scanStart = time();
                     
-                    // UTILISATION DE LA MÉTHODE SÉCURISÉE
+                    // 🔥 CORRECTION : Utiliser la méthode sécurisée avec URL séparée
                     $output = $this->runSecureCommand(
                         $config['tool'], 
-                        array_merge($config['args'], ['-u']), // Ajouter -u pour l'URL
-                        $url, 
+                        $config['args'], // Arguments incluant -u
+                        $url, // URL passée séparément
                         $config['timeout']
                     );
                     
@@ -1310,7 +1343,7 @@ EOT;
     {
         // Validation sécurisée des clés API
         $apiKey = $this->getSecureEnvValue('GEMINI_API_KEY', '');
-        $apiUrl = $this->getSecureEnvValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent');
+        $apiUrl = $this->getSecureEnvValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
         
         if (empty($apiKey)) {
             Log::warning('Gemini API key not configured (secure mode)', ['scan_id' => $this->scan_id]);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ScanResult;
+use App\Models\ScanHistory;
 use Illuminate\Support\Str;
 use App\Jobs\ScanWebsite;
 use Illuminate\Http\Request;
@@ -184,13 +185,18 @@ class ScanController extends Controller
         
         try {
             // SÉCURITÉ 6: Création du scan avec association utilisateur
-            $scan = ScanResult::create([
+             $scan = ScanResult::create([
                 'scan_id' => Str::uuid(),
                 'url' => $url,
                 'status' => 'pending',
-                'user_id' => $user->id // OBLIGATOIRE maintenant
+                'user_id' => $user->id
             ]);
-            
+            ScanHistory::create([
+            'scan_id' => $scan->scan_id,
+            'user_id' => $user->id,
+            'url' => $url,
+            'status' => 'pending'
+        ]);
             // Lancer le job sécurisé
             ScanWebsite::dispatch($url, $scan->scan_id)->delay(now()->addSeconds(2));
             
@@ -326,10 +332,7 @@ class ScanController extends Controller
         // SÉCURITÉ 1: Authentification requise
         $user = $this->getAuthenticatedUser();
         if (!$user) {
-            return response()->json([
-                'message' => 'Authentication required',
-                'error' => 'You must be logged in to search scans'
-            ], 401);
+            return response()->json(['message' => 'Authentication required'], 401);
         }
         
         // SÉCURITÉ 2: Validation des paramètres de recherche
@@ -344,7 +347,7 @@ class ScanController extends Controller
         
         try {
             // SÉCURITÉ 3: Recherche limitée aux scans de l'utilisateur
-            $scansQuery = ScanResult::where('user_id', $user->id);
+            $scansQuery = ScanHistory::forUser($user->id);
             
             if (!empty($query)) {
                 // Recherche sécurisée par URL avec LIKE échappé
@@ -354,8 +357,8 @@ class ScanController extends Controller
             }
             
             $scans = $scansQuery->orderBy('created_at', 'desc')
-                              ->limit(50) // Limite de sécurité
-                              ->get(['scan_id', 'url', 'status', 'created_at']);
+                          ->limit(50)
+                          ->get(['scan_id', 'url', 'status', 'created_at', 'is_favorite']);
             
             // Transformer les résultats
             $formattedScans = $scans->map(function($scan) {
@@ -363,8 +366,9 @@ class ScanController extends Controller
                     'id' => $scan->scan_id,
                     'scan_id' => $scan->scan_id,
                     'url' => $scan->url,
-                    'status' => $scan->status ?? 'unknown',
-                    'created_at' => $scan->created_at
+                    'status' => $scan->status,
+                    'created_at' => $scan->created_at,
+                    'is_favorite' => $scan->is_favorite
                 ];
             });
             
@@ -406,21 +410,31 @@ class ScanController extends Controller
             $limit = max(1, min(100, (int)$limit)); // Entre 1 et 100
             
             // SÉCURITÉ 3: Récupération des scans de l'utilisateur uniquement
-            $scans = ScanResult::where('user_id', $user->id)
+            $scans = ScanHistory::forUser($user->id)
+                    ->completed()
                     ->orderBy('created_at', 'desc')
                     ->limit($limit)
-                    ->get(['scan_id', 'url', 'status', 'created_at']);
+                    ->get([
+                        'scan_id', 
+                        'url', 
+                        'status', 
+                        'created_at',
+                        'is_favorite',
+                        'last_viewed_at'
+                    ]);
             
-            $formattedScans = $scans->map(function($scan) {
+           $formattedScans = $scans->map(function($scan) {
                 return [
                     'id' => $scan->scan_id,
                     'scan_id' => $scan->scan_id,
                     'url' => $scan->url,
-                    'status' => $scan->status ?? 'unknown',
-                    'created_at' => $scan->created_at
+                    'status' => $scan->status,
+                    'created_at' => $scan->created_at,
+                    'is_favorite' => $scan->is_favorite,
+                    'last_viewed_at' => $scan->last_viewed_at
                 ];
             });
-            
+
             return response()->json($formattedScans);
             
         } catch (\Exception $e) {
@@ -434,6 +448,55 @@ class ScanController extends Controller
                 'message' => 'Error retrieving user scans',
                 'error' => 'Internal server error occurred'
             ], 500);
+        }
+    }
+
+      public function toggleFavorite(Request $request, $scanId)
+    {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
+            return response()->json(['message' => 'Authentication required'], 401);
+        }
+
+        try {
+            $history = ScanHistory::where('scan_id', $scanId)
+                                 ->where('user_id', $user->id)
+                                 ->first();
+
+            if (!$history) {
+                return response()->json(['message' => 'Scan not found'], 404);
+            }
+
+            $isFavorite = $history->toggleFavorite();
+
+            return response()->json([
+                'success' => true,
+                'is_favorite' => $isFavorite,
+                'message' => $isFavorite ? 'Added to favorites' : 'Removed from favorites'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error updating favorite'], 500);
+        }
+    }
+
+    public function getFavorites(Request $request)
+    {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
+            return response()->json(['message' => 'Authentication required'], 401);
+        }
+
+        try {
+            $favorites = ScanHistory::forUser($user->id)
+                                   ->favorites()
+                                   ->orderBy('created_at', 'desc')
+                                   ->get(['scan_id', 'url', 'status', 'created_at']);
+
+            return response()->json($favorites);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error retrieving favorites'], 500);
         }
     }
 

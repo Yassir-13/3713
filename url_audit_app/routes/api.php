@@ -26,6 +26,8 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Routes protégées pour les scans des utilisateurs authentifiés
     Route::get('/user-scans', [ScanController::class, 'getUserScans']);
+    Route::post('/scan/{scanId}/favorite', [ScanController::class, 'toggleFavorite']);
+    Route::get('/favorites', [ScanController::class, 'getFavorites']);
 });
 
 // Routes de scan

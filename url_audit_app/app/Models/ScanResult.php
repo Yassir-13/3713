@@ -29,6 +29,11 @@ class ScanResult extends Model
     {
         return $this->belongsTo(User::class);
     }
+    
+    public function history()
+    {
+        return $this->hasOne(ScanHistory::class, 'scan_id', 'scan_id');
+    }
 
     /**
      * Récupère le dernier scan complet pour une URL donnée

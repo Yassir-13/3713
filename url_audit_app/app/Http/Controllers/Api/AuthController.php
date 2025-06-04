@@ -53,12 +53,9 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * 🔐 LOGIN AVEC A2F - VERSION DEBUG
-     */
     public function login(Request $request)
     {
-        Log::info('🐛 LOGIN ATTEMPT START', [
+        Log::info('LOGIN ATTEMPT START', [
             'email' => $request->email,
             'has_2fa_code' => !empty($request->two_factor_code),
             'ip' => $request->ip()
@@ -70,13 +67,11 @@ class AuthController extends Controller
             'two_factor_code' => 'nullable|string'
         ]);
     
-        // Recherche de l'utilisateur
         $user = User::where('email', $request->email)->first();
-        Log::info('🐛 USER FOUND', ['user_exists' => !!$user]);
+        Log::info('USER FOUND', ['user_exists' => !!$user]);
     
-        // Vérification credentials
         if (!$user || !Hash::check($request->password, $user->password)) {
-            Log::warning('🐛 INVALID CREDENTIALS', [
+            Log::warning('INVALID CREDENTIALS', [
                 'email' => $request->email,
                 'user_exists' => !!$user,
                 'password_match' => $user ? Hash::check($request->password, $user->password) : false
@@ -87,23 +82,20 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // 🔍 DEBUG A2F - Afficher l'état complet de l'utilisateur
         $debugInfo = $user->debug2FAStatus();
-        Log::info('🐛 USER 2FA DEBUG INFO', $debugInfo);
+        Log::info(' USER 2FA DEBUG INFO', $debugInfo);
 
-        // Vérifier si l'utilisateur a l'A2F activé
         $has2FAEnabled = $user->hasTwoFactorEnabled();
-        Log::info('🐛 2FA CHECK RESULT', [
+        Log::info('2FA CHECK RESULT', [
             'has_2fa_enabled' => $has2FAEnabled,
             'user_id' => $user->id
         ]);
 
         if ($has2FAEnabled) {
-            Log::info('🐛 2FA IS REQUIRED');
+            Log::info(' 2FA IS REQUIRED');
             
-            // Si aucun code A2F n'est fourni, demander le code
             if (!$request->two_factor_code) {
-                Log::info('🐛 NO 2FA CODE PROVIDED - REQUESTING CODE');
+                Log::info(' NO 2FA CODE PROVIDED - REQUESTING CODE');
                 
                 return response()->json([
                     'message' => '2FA code required',
@@ -112,16 +104,16 @@ class AuthController extends Controller
                 ], 200);
             }
             
-            Log::info('🐛 2FA CODE PROVIDED - VERIFYING', [
+            Log::info('2FA CODE PROVIDED - VERIFYING', [
                 'code_length' => strlen($request->two_factor_code)
             ]);
             
             // Vérifier le code A2F fourni
             $twoFactorValid = $this->verify2FACode($user, $request->two_factor_code);
-            Log::info('🐛 2FA VERIFICATION RESULT', ['valid' => $twoFactorValid]);
+            Log::info(' 2FA VERIFICATION RESULT', ['valid' => $twoFactorValid]);
             
             if (!$twoFactorValid) {
-                Log::warning('🐛 INVALID 2FA CODE', [
+                Log::warning(' INVALID 2FA CODE', [
                     'user_id' => $user->id,
                     'code_length' => strlen($request->two_factor_code)
                 ]);
@@ -133,15 +125,15 @@ class AuthController extends Controller
                 ], 422);
             }
             
-            Log::info('🐛 2FA CODE VALID - PROCEEDING TO LOGIN');
+            Log::info(' 2FA CODE VALID - PROCEEDING TO LOGIN');
         } else {
-            Log::info('🐛 2FA NOT REQUIRED - NORMAL LOGIN');
+            Log::info('2FA NOT REQUIRED - NORMAL LOGIN');
         }
 
-        // 🎉 CONNEXION RÉUSSIE
+        // CONNEXION RÉUSSIE
         $token = $user->createToken('YourAppName')->plainTextToken;
         
-        Log::info('🐛 LOGIN SUCCESSFUL', [
+        Log::info(' LOGIN SUCCESSFUL', [
             'user_id' => $user->id,
             'email' => $user->email,
             'two_factor_used' => $has2FAEnabled
@@ -169,11 +161,11 @@ class AuthController extends Controller
     }
 
     /**
-     * 🔍 VÉRIFICATION CODE A2F - VERSION DEBUG
+     * VÉRIFICATION CODE A2F - VERSION DEBUG
      */
     private function verify2FACode($user, $code)
     {
-        Log::info('🐛 VERIFY 2FA CODE START', [
+        Log::info(' VERIFY 2FA CODE START', [
             'user_id' => $user->id,
             'code_length' => strlen($code),
             'code_type' => strlen($code) > 6 ? 'recovery' : 'totp'
@@ -182,16 +174,16 @@ class AuthController extends Controller
         try {
             // Code de récupération
             if (strlen($code) > 6 && !empty($user->two_factor_recovery_codes)) {
-                Log::info('🐛 CHECKING RECOVERY CODE');
+                Log::info(' CHECKING RECOVERY CODE');
                 return $this->verifyRecoveryCode($user, $code);
             }
             
             // Code TOTP normal
             if (strlen($code) === 6 && is_numeric($code)) {
-                Log::info('🐛 CHECKING TOTP CODE');
+                Log::info(' CHECKING TOTP CODE');
                 
                 if (empty($user->two_factor_secret)) {
-                    Log::error('🐛 NO 2FA SECRET FOUND');
+                    Log::error('NO 2FA SECRET FOUND');
                     return false;
                 }
                 
@@ -199,18 +191,18 @@ class AuthController extends Controller
                 $secret = decrypt($user->two_factor_secret);
                 $isValid = $google2fa->verifyKey($secret, $code, 2);
                 
-                Log::info('🐛 TOTP VERIFICATION RESULT', ['valid' => $isValid]);
+                Log::info('TOTP VERIFICATION RESULT', ['valid' => $isValid]);
                 return $isValid;
             }
             
-            Log::warning('🐛 INVALID CODE FORMAT', [
+            Log::warning('INVALID CODE FORMAT', [
                 'length' => strlen($code),
                 'is_numeric' => is_numeric($code)
             ]);
             return false;
             
         } catch (\Exception $e) {
-            Log::error('🐛 2FA VERIFICATION ERROR', [
+            Log::error('2FA VERIFICATION ERROR', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -227,7 +219,7 @@ class AuthController extends Controller
             $recoveryCodes = collect(json_decode(decrypt($user->two_factor_recovery_codes), true));
             
             if (!$recoveryCodes->contains($code)) {
-                Log::info('🐛 RECOVERY CODE NOT FOUND');
+                Log::info('RECOVERY CODE NOT FOUND');
                 return false;
             }
 
@@ -239,7 +231,7 @@ class AuthController extends Controller
                 'two_factor_recovery_codes' => encrypt($remainingCodes->toJson())
             ]);
 
-            Log::info('🐛 RECOVERY CODE USED', [
+            Log::info('RECOVERY CODE USED', [
                 'user_id' => $user->id,
                 'remaining_codes' => $remainingCodes->count()
             ]);
@@ -247,7 +239,7 @@ class AuthController extends Controller
             return true;
             
         } catch (\Exception $e) {
-            Log::error('🐛 RECOVERY CODE ERROR', ['error' => $e->getMessage()]);
+            Log::error(' RECOVERY CODE ERROR', ['error' => $e->getMessage()]);
             return false;
         }
     }

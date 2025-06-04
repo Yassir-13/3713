@@ -1,5 +1,4 @@
 // src/components/settings/TwoFactorSettings.tsx
-// 🔐 Composant principal de gestion A2F
 import React, { useState, useEffect } from 'react';
 import { useTwoFactor } from '../hooks/useTwoFactor';
 import TwoFactorSetup from '../components/auth/TwoFactorSetup';

@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 
 
 const CTASection: React.FC = () => {
-  const { user } = useAuth(); // pour savoir si connecté
-const navigate = useNavigate(); // pour rediriger
+  const { user } = useAuth(); 
+const navigate = useNavigate(); 
   return (
     <section
       className="cta d-flex flex-column align-items-center justify-content-center p-4"

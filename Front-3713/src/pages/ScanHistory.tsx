@@ -151,7 +151,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({
                   display: "flex", 
                   justifyContent: "flex-end",
                   marginTop: "10px",
-                  padding: "0 16px 16px" // Ajout du padding horizontal pour aligner le bouton
+                  padding: "0 16px 16px"
                 }}>
                   <button style={viewButtonStyle}>
                     View details

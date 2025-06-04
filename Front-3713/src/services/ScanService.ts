@@ -47,30 +47,21 @@ class ScanService {
     }
   }
 
-  // Méthode modifiée pour contourner le problème d'authentification
   async getScanHistory(): Promise<ScanResult[]> {
     try {
-      // Si l'utilisateur est authentifié, essayer la route utilisateur
       if (localStorage.getItem('token')) {
         try {
-          // Essayer d'abord avec getUserScans (qui nécessite une authentification)
           const response = await api.get('/user-scans');
-          
-          // Si pas d'erreur, traiter et retourner les résultats
           if (Array.isArray(response.data)) {
             return response.data.map(this.normalizeScanItem);
           }
         } catch (e) {
-          // Si échec d'authentification, ignorer silencieusement et continuer
           console.log("Failed to get user-specific scans, will try public scans");
         }
       }
       
-      // Plan B: Obtenir tous les scans récents via la méthode de recherche
-      // Cette approche fonctionne même sans authentification
       return await this.getAllRecentScans();
     } catch (error: any) {
-      // En cas d'échec des deux méthodes, retourner l'historique local
       console.error("Error retrieving scan history:", error);
       return this.getLocalScans();
     }
@@ -80,7 +71,6 @@ class ScanService {
   async getAllRecentScans(): Promise<ScanResult[]> {
     try {
       // searchScans sans paramètre répertorie tous les scans récents
-      // Ceci est basé sur l'implémentation de searchScans dans ScanController
       const response = await api.get('/search-scans');
       
       if (Array.isArray(response.data)) {

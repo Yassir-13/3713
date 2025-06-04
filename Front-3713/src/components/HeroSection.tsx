@@ -14,7 +14,7 @@ const HeroSection: React.FC = () => {
         className="text-center"
         style={{
           fontSize: '7rem',
-          textShadow: '0 0 16px var(--accent-color)', // Application de l'effet néon
+          textShadow: '0 0 16px var(--accent-color)', 
           color: 'var(--text-color)',
         }}
       >
@@ -25,7 +25,7 @@ const HeroSection: React.FC = () => {
         style={{
           width: '50%',
           height: '2px',
-          backgroundColor: 'var(--accent-color)', // Accent de couleur
+          backgroundColor: 'var(--accent-color)',
           marginBottom: '1rem',
         }}
       ></div>
@@ -45,7 +45,7 @@ const HeroSection: React.FC = () => {
         style={{
           width: '50%',
           height: '2px',
-          backgroundColor: 'var(--accent-color)', // Utilise la même couleur
+          backgroundColor: 'var(--accent-color)', 
           marginTop: '1rem',
         }}
       ></div>

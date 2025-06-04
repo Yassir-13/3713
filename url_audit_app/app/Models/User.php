@@ -29,7 +29,7 @@ class User extends Authenticatable
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
+
      *
      * @var list<string>
      */
@@ -56,7 +56,7 @@ class User extends Authenticatable
     }
 
     /**
-     * 🔗 RELATIONS
+     * RELATIONS
      */
       public function scanHistory()
     {
@@ -76,16 +76,12 @@ class User extends Authenticatable
         return $this->hasMany(\App\Models\ScanResult::class);
     }
 
-    // 🔐 MÉTHODES A2F - CRITIQUES POUR LE FONCTIONNEMENT
+    // MÉTHODES A2F - CRITIQUES POUR LE FONCTIONNEMENT
 
-    /**
-     * ⭐ MÉTHODE PRINCIPALE - Vérifier si l'utilisateur a l'A2F activé
-     * Cette méthode est appelée par AuthController::login()
-     */
     public function hasTwoFactorEnabled(): bool
     {
         // Debug pour voir ce qui se passe
-        Log::info('🔍 Checking 2FA status for user ' . $this->email, [
+        Log::info('Checking 2FA status for user ' . $this->email, [
             'two_factor_enabled' => $this->two_factor_enabled,
             'has_secret' => !empty($this->two_factor_secret),
             'confirmed_at' => $this->two_factor_confirmed_at,
@@ -140,9 +136,7 @@ class User extends Authenticatable
         ];
     }
 
-    /**
-     * 🆕 MÉTHODE DEBUG - Pour diagnostiquer les problèmes A2F
-     */
+    
     public function debug2FAStatus(): array
     {
         return [

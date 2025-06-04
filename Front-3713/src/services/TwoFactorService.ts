@@ -14,7 +14,7 @@ import {
 class TwoFactorService {
   
   /**
-   * 📊 Obtenir le statut A2F de l'utilisateur connecté
+   * Obtenir le statut A2F de l'utilisateur connecté
    */
   async getStatus(): Promise<TwoFactorStatus> {
     try {
@@ -27,7 +27,7 @@ class TwoFactorService {
   }
 
   /**
-   * 🔑 Générer secret A2F et QR code
+   * Générer secret A2F et QR code
    */
   async generateSecret(password: string): Promise<TwoFactorSetupData> {
     try {
@@ -40,7 +40,7 @@ class TwoFactorService {
   }
 
   /**
-   * ✅ Confirmer et activer l'A2F
+   * Confirmer et activer l'A2F
    */
   async confirmTwoFactor(code: string): Promise<TwoFactorConfirmResult> {
     try {
@@ -53,7 +53,7 @@ class TwoFactorService {
   }
 
   /**
-   * ❌ Désactiver l'A2F
+   * Désactiver l'A2F
    */
   async disableTwoFactor(password: string, code: string): Promise<{ message: string; enabled: boolean }> {
     try {
@@ -66,7 +66,7 @@ class TwoFactorService {
   }
 
   /**
-   * 🔄 Régénérer les codes de récupération
+   * Régénérer les codes de récupération
    */
   async regenerateRecoveryCodes(password: string): Promise<RecoveryCodesData> {
     try {
@@ -79,7 +79,7 @@ class TwoFactorService {
   }
 
   /**
-   * 🔍 Vérifier un code A2F (pour login ou actions sensibles)
+   * Vérifier un code A2F (pour login ou actions sensibles)
    */
   async verifyCode(userId: number, code: string): Promise<VerifyCodeResponse> {
     try {
@@ -92,7 +92,7 @@ class TwoFactorService {
   }
 
   /**
-   * 🔐 Login avec A2F (extension du login classique)
+   * Login avec A2F (extension du login classique)
    */
   async loginWithTwoFactor(email: string, password: string, twoFactorCode?: string) {
     try {
@@ -109,7 +109,7 @@ class TwoFactorService {
   }
 
   /**
-   * 🛠️ Utilitaires privés
+   * Utilitaires privés
    */
 
   /**
@@ -138,7 +138,7 @@ class TwoFactorService {
   }
 
   /**
-   * 📋 Utilitaires pour codes de récupération
+   * Utilitaires pour codes de récupération
    */
   
   /**

@@ -55,23 +55,23 @@ class ScanWebsite implements ShouldQueue
         ]);
 
         try {
-            // ÉTAPE 1: WhatWeb - SÉCURISÉ
+            // ÉTAPE 1: WhatWeb 
             Log::info("Démarrage WhatWeb sécurisé");
             $whatweb = $this->runSecureCommand('whatweb', ['-v'], $this->url, 60);
             Log::info("WhatWeb terminé", ['bytes' => strlen($whatweb)]);
             
-            // 🔥 ÉTAPE 2: SSLyze - CORRECTION : hostname:port seulement !
+            // ÉTAPE 2: SSLyze
             Log::info("Démarrage SSLyze sécurisé");
             $sslHost = $this->extractHostFromUrl($this->url);
             $sslyze = $this->runSecureCommand('sslyze', [], $sslHost, 120);
             Log::info("SSLyze terminé", ['bytes' => strlen($sslyze)]);
             
-            // ÉTAPE 3: Nuclei - SÉCURISÉ
+            // ÉTAPE 3: Nuclei
             Log::info("Démarrage Nuclei sécurisé");
             $nucleiResults = $this->runNucleiSecure($this->url);
             Log::info("Nuclei terminé");
             
-            // ÉTAPE 4: ZAP - SÉCURISÉ
+            // ÉTAPE 4: ZAP
             Log::info("Démarrage ZAP sécurisé");
             $zapResults = $this->runZapScanSecure($this->url);
             Log::info("ZAP terminé");
@@ -214,21 +214,19 @@ class ScanWebsite implements ShouldQueue
         // Étape 3: Construction sécurisée de la commande
         $command = [$toolPath];
         
-        // 🔥 CORRECTION CRITIQUE : Validation spécifique par outil
+        //Validation spécifique par outil
         foreach ($args as $arg) {
             if ($tool === 'nuclei') {
-                // Pour Nuclei : permettre templates avec slashes + options communes
                 if (!preg_match('/^[a-zA-Z0-9._\/-]+$/', $arg) && 
                     !in_array($arg, ['-jsonl', '-silent', '-no-color', '-u', '-t'])) {
                     throw new \InvalidArgumentException("Argument Nuclei non sécurisé: $arg");
                 }
             } elseif ($tool === 'sslyze') {
-                // Pour SSLyze : validation plus stricte (pas de slashes)
                 if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
                     throw new \InvalidArgumentException("Argument SSLyze non sécurisé: $arg");
                 }
             } else {
-                // Pour WhatWeb et autres : validation générale
+                //whatweb
                 if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
                     throw new \InvalidArgumentException("Argument non sécurisé: $arg");
                 }
@@ -236,12 +234,11 @@ class ScanWebsite implements ShouldQueue
             $command[] = $arg;
         }
         
-        // Ajout de la cible si fournie
         if ($target) {
             $command[] = escapeshellarg($target);
         }
         
-        // Étape 4: Exécution avec proc_open (plus sécurisé que shell_exec)
+        // Étape 4: Exécution avec proc_open 
         return $this->executeCommandSecurely($command, $timeout);
     }
 
@@ -357,7 +354,6 @@ class ScanWebsite implements ShouldQueue
         // URL déjà validée dans le constructeur, pas besoin de re-valider
         
         try {
-            // 🔥 COMMANDES CORRIGÉES avec les VRAIS templates Nuclei v3
             $commands = [
                 'exposures_critical' => [
                     'tool' => 'nuclei',
@@ -403,7 +399,7 @@ class ScanWebsite implements ShouldQueue
             
             Log::info("Démarrage de {$totalScans} scans Nuclei 3713 sécurisés");
             
-            // Exécution séquentielle SÉCURISÉE
+            // Exécution séquentielle
             foreach ($commands as $scanType => $config) {
                 $executedScans++;
                 Log::info("[{$executedScans}/{$totalScans}] Scan sécurisé {$scanType}: {$config['description']}");
@@ -411,7 +407,7 @@ class ScanWebsite implements ShouldQueue
                 try {
                     $scanStart = time();
                     
-                    // 🔥 CORRECTION : Utiliser la méthode sécurisée avec URL séparée
+                    // CORRECTION : Utiliser la méthode sécurisée avec URL séparée
                     $output = $this->runSecureCommand(
                         $config['tool'], 
                         $config['args'], // Arguments incluant -u
@@ -620,11 +616,9 @@ class ScanWebsite implements ShouldQueue
     {
         // L'URL est déjà validée, pas besoin de re-valider
         
-        // Validation sécurisée des clés d'environnement
         $apiKey = $this->getSecureEnvValue('ZAP_API_KEY', '13373713');
         $apiHost = $this->getSecureEnvValue('ZAP_API_HOST', 'http://zap:8090');
         
-        // Validation du host ZAP
         if (!$this->isValidZapHost($apiHost)) {
             throw new \InvalidArgumentException("Host ZAP non sécurisé");
         }

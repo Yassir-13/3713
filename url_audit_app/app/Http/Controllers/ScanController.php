@@ -35,7 +35,7 @@ class ScanController extends Controller
      */
     private function validateScanUrl($url)
     {
-        // Étape 1: Validation format de base
+        // Validation format de base
         $validator = Validator::make(['url' => $url], [
             'url' => [
                 'required',
@@ -52,7 +52,7 @@ class ScanController extends Controller
             ];
         }
 
-        // Étape 2: Parsing sécurisé
+        //  Parsing 
         $components = parse_url($url);
         if (!$components || !isset($components['host'])) {
             return [
@@ -63,7 +63,7 @@ class ScanController extends Controller
 
         $host = $components['host'];
 
-        // Étape 3: Validation hostname strict
+        // Validation hostname 
         if (!preg_match('/^[a-zA-Z0-9.-]+$/', $host)) {
             return [
                 'valid' => false,
@@ -71,7 +71,7 @@ class ScanController extends Controller
             ];
         }
 
-        // Étape 4: Blacklist IPs privées/dangereuses
+        // Blacklist IPs privées/dangereuses
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             if (!filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 return [
@@ -81,7 +81,7 @@ class ScanController extends Controller
             }
         }
 
-        // Étape 5: Blacklist de domaines dangereux
+        // Blacklist de domaines dangereux
         $dangerousDomains = [
             'localhost',
             'metadata.google.internal',
@@ -200,7 +200,6 @@ class ScanController extends Controller
             // Lancer le job sécurisé
             ScanWebsite::dispatch($url, $scan->scan_id)->delay(now()->addSeconds(2));
             
-            // Log sécurisé
             Log::info("Secure scan started", [
                 'scan_id' => $scan->scan_id,
                 'user_id' => $user->id,
@@ -254,7 +253,7 @@ class ScanController extends Controller
                 ], 404);
             }
             
-            // SÉCURITÉ 2: Contrôle d'accès - L'utilisateur peut-il voir ce scan ?
+            // Contrôle d'accès - L'utilisateur peut-il voir ce scan ?
             $user = $this->getAuthenticatedUser();
             if (!$user) {
                 return response()->json([
@@ -263,7 +262,7 @@ class ScanController extends Controller
                 ], 401);
             }
             
-            // SÉCURITÉ 3: Vérification de propriété du scan
+            // Vérification de propriété du scan
             if ($scan->user_id && $scan->user_id !== $user->id) {
                 return response()->json([
                     'message' => 'Access denied',
@@ -329,13 +328,13 @@ class ScanController extends Controller
      */
     public function searchScans(Request $request)
     {   
-        // SÉCURITÉ 1: Authentification requise
+        //Authentification requise
         $user = $this->getAuthenticatedUser();
         if (!$user) {
             return response()->json(['message' => 'Authentication required'], 401);
         }
         
-        // SÉCURITÉ 2: Validation des paramètres de recherche
+        //Validation des paramètres de recherche
         $query = $request->input('q') ?? $request->input('url');
         
         if ($query && strlen($query) > 255) {
@@ -346,7 +345,7 @@ class ScanController extends Controller
         }
         
         try {
-            // SÉCURITÉ 3: Recherche limitée aux scans de l'utilisateur
+            //Recherche limitée aux scans de l'utilisateur
             $scansQuery = ScanHistory::forUser($user->id);
             
             if (!empty($query)) {

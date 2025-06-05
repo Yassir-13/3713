@@ -733,30 +733,123 @@ class ScanWebsite implements ShouldQueue
     /**
      * Création contexte ZAP sécurisé
      */
-    private function createZapContextSecurely($apiHost, $apiKey, $contextName, $scheme, $domain)
-    {
+   private function createZapContextSecurely($apiHost, $apiKey, $contextName, $scheme, $domain)
+{
+    Log::info("🔧 ZAP Context Creation Start", [
+        'api_host' => $apiHost,
+        'context_name' => $contextName,
+        'scheme' => $scheme,
+        'domain' => $domain,
+        'scan_id' => $this->scan_id
+    ]);
+    
+    try {
+        // ÉTAPE 1: Créer le contexte
         $createContextUrl = "{$apiHost}/JSON/context/action/newContext/?apikey=" . urlencode($apiKey) . 
                            "&contextName=" . urlencode($contextName);
+        
+        Log::info("🔧 ZAP Context URL", [
+            'url' => $createContextUrl,
+            'scan_id' => $this->scan_id
+        ]);
+        
         $contextResponse = Http::timeout(10)->get($createContextUrl);
         
+        Log::info("🔧 ZAP Context Raw Response", [
+            'status_code' => $contextResponse->status(),
+            'headers' => $contextResponse->headers(),
+            'body' => $contextResponse->body(),
+            'successful' => $contextResponse->successful(),
+            'scan_id' => $this->scan_id
+        ]);
+        
+        // ✅ CORRECTION 1: Vérifier le statut ET le contenu
         if (!$contextResponse->successful()) {
-            throw new \Exception("Échec création contexte sécurisé");
+            throw new \Exception("Échec création contexte ZAP - Status: {$contextResponse->status()} - Response: " . $contextResponse->body());
         }
         
-        $contextId = $contextResponse->json()['contextId'] ?? null;
+        // ✅ CORRECTION 2: Parser la réponse JSON avec gestion d'erreur
+        $responseBody = $contextResponse->body();
+        if (empty($responseBody)) {
+            throw new \Exception("Réponse ZAP vide pour la création du contexte");
+        }
+        
+        $contextData = json_decode($responseBody, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception("Erreur JSON ZAP: " . json_last_error_msg() . " - Body: " . $responseBody);
+        }
+        
+        Log::info("🔧 ZAP Context Parsed Data", [
+            'context_data' => $contextData,
+            'json_error' => json_last_error_msg(),
+            'scan_id' => $this->scan_id
+        ]);
+        
+        // ✅ CORRECTION 3: Vérifier la structure de la réponse ZAP
+        if (!is_array($contextData)) {
+            throw new \Exception("Format de réponse ZAP inattendu (pas un array): " . gettype($contextData));
+        }
+        
+        $contextId = $contextData['contextId'] ?? null;
         if (!$contextId) {
-            throw new \Exception("ID contexte sécurisé non trouvé");
+            throw new \Exception("ID contexte manquant dans la réponse ZAP. Data reçue: " . json_encode($contextData));
         }
         
-        // Configuration contexte sécurisé
+        Log::info("🔧 ZAP Context Created Successfully", [
+            'context_id' => $contextId,
+            'scan_id' => $this->scan_id
+        ]);
+        
+        // ÉTAPE 2: Configurer l'inclusion dans le contexte
         $regex = $scheme . '://' . preg_quote($domain, '/') . '.*';
         $includeUrl = "{$apiHost}/JSON/context/action/includeInContext/?apikey=" . urlencode($apiKey) . 
                      "&contextName=" . urlencode($contextName) . "&regex=" . urlencode($regex);
-        Http::timeout(5)->get($includeUrl);
+        
+        Log::info("🔧 ZAP Include Context", [
+            'include_url' => $includeUrl,
+            'regex' => $regex,
+            'scan_id' => $this->scan_id
+        ]);
+        
+        $includeResponse = Http::timeout(5)->get($includeUrl);
+        
+        Log::info("🔧 ZAP Include Response", [
+            'status_code' => $includeResponse->status(),
+            'body' => $includeResponse->body(),
+            'successful' => $includeResponse->successful(),
+            'scan_id' => $this->scan_id
+        ]);
+        
+        // ✅ CORRECTION 4: Vérifier que l'inclusion a fonctionné
+        if (!$includeResponse->successful()) {
+            Log::warning("🔧 ZAP Include failed but continuing", [
+                'status' => $includeResponse->status(),
+                'response' => $includeResponse->body(),
+                'scan_id' => $this->scan_id
+            ]);
+            // Ne pas faire échouer pour ça, c'est pas critique
+        }
+        
+        Log::info("🔧 ZAP Context Configuration Complete", [
+            'context_id' => $contextId,
+            'scan_id' => $this->scan_id
+        ]);
         
         return $contextId;
+        
+    } catch (\Exception $e) {
+        Log::error("🔧 ZAP Context Creation FAILED", [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'api_host' => $apiHost,
+            'context_name' => $contextName,
+            'scan_id' => $this->scan_id
+        ]);
+        
+        // Re-throw avec plus de contexte
+        throw new \Exception("Échec création contexte ZAP: " . $e->getMessage());
     }
-
+}
     /**
      * Spider ZAP sécurisé
      */

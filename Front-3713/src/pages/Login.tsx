@@ -1,4 +1,4 @@
-// src/pages/Login.tsx - Version Finale Corrigée
+// src/pages/Login.tsx - Version Simplifiée
 import React, { useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
@@ -19,18 +19,11 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorError, setTwoFactorError] = useState('');
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState<number | null>(null);
 
-  // Context and navigation - GARDE LA MÊME LOGIQUE QUI FONCTIONNE
-  const { 
-    login, 
-    isAuthenticated, 
-    twoFactorRequired, 
-    setTwoFactorRequired, 
-    submitTwoFactor, 
-    clearTwoFactor,
-    pendingUserId  // CRITIQUE : Garder cette ligne !
-  } = useContext(AuthContext);
-  
+  // Context and navigation
+  const { login, isAuthenticated } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,7 +34,57 @@ const Login: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Main login form submission - GARDE LA MÊME LOGIQUE
+  // 🔧 FONCTION LOGIN SIMPLIFIÉE - Une seule route pour tout
+  const performLogin = async (email: string, password: string, twoFactorCode?: string) => {
+    console.log('🔧 DEBUG: Performing login', { 
+      email, 
+      hasTwoFactorCode: !!twoFactorCode 
+    });
+
+    try {
+      const response = await axios.post('http://localhost:8000/api/auth/login', {
+        email,
+        password,
+        ...(twoFactorCode && { two_factor_code: twoFactorCode })
+      });
+
+      console.log('🔧 DEBUG: Login response:', response.data);
+
+      const data = response.data;
+
+      // Si 2FA requis
+      if (data.requires_2fa === true && data.user_id) {
+        console.log('🔧 DEBUG: 2FA required for user:', data.user_id);
+        setRequiresTwoFactor(true);
+        setPendingUserId(data.user_id);
+        return false; // Login pas encore complet
+      }
+
+      // Login réussi
+      if (data.user && data.access_token) {
+        console.log('🔧 DEBUG: Login successful, calling context login');
+        login(data.user, data.access_token);
+        
+        const state = location.state as LocationState;
+        const redirectPath = state?.from?.pathname || '/scanner';
+        navigate(redirectPath);
+        return true;
+      } else {
+        throw new Error('Invalid server response');
+      }
+      
+    } catch (err: any) {
+      console.log('🔧 DEBUG: Login error:', err);
+      
+      if (err.response?.data?.message) {
+        throw new Error(err.response.data.message);
+      } else {
+        throw new Error('Login failed');
+      }
+    }
+  };
+
+  // 🔧 GESTION FORMULAIRE PRINCIPAL
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -49,43 +92,15 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/login', {
-        email,
-        password,
-      });
-
-      const data = response.data;
-
-      // Check if 2FA is required
-      if (data.requires_2fa === true && data.user_id) {
-        setTwoFactorRequired(true, data.user_id, { email, password });
-        setLoading(false);
-        return;
-      }
-
-      // Normal login successful
-      if (data.user && data.token) {
-        login(data.user, data.token);
-        
-        const state = location.state as LocationState;
-        const redirectPath = state?.from?.pathname || '/scanner';
-        navigate(redirectPath);
-      } else {
-        setError('Invalid server response');
-      }
-      
+      await performLogin(email, password);
     } catch (err: any) {
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError('Invalid credentials or server error');
-      }
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Two-factor authentication form submission - GARDE LA MÊME LOGIQUE
+  // 🔧 GESTION 2FA
   const handleTwoFactorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTwoFactorError('');
@@ -98,27 +113,27 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await submitTwoFactor(twoFactorCode.trim());
-      
-      const state = location.state as LocationState;
-      const redirectPath = state?.from?.pathname || '/scanner';
-      navigate(redirectPath);
-      
+      const success = await performLogin(email, password, twoFactorCode.trim());
+      if (success) {
+        console.log('🔧 DEBUG: 2FA login successful');
+      }
     } catch (err: any) {
-      setTwoFactorError(err.message || 'Invalid 2FA code');
+      console.log('🔧 DEBUG: 2FA error:', err.message);
+      setTwoFactorError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Cancel two-factor authentication - GARDE LA MÊME LOGIQUE
+  // 🔧 ANNULATION 2FA
   const handleCancelTwoFactor = () => {
-    clearTwoFactor();
+    setRequiresTwoFactor(false);
+    setPendingUserId(null);
     setTwoFactorCode('');
     setTwoFactorError('');
   };
 
-  // Simple 2FA code validation - GARDE LA MÊME LOGIQUE
+  // Validation simple du code 2FA
   const isValidTwoFactorCode = (code: string) => {
     const cleanCode = code.replace(/\s/g, '');
     return /^\d{6}$/.test(cleanCode) || /^[A-Z0-9]{8}$/i.test(cleanCode);
@@ -144,11 +159,11 @@ const Login: React.FC = () => {
       >
         {/* Dynamic title */}
         <h2 className="text-center mb-4">
-          {twoFactorRequired ? 'Two-Factor Authentication' : 'Login'}
+          {requiresTwoFactor ? 'Two-Factor Authentication' : 'Login'}
         </h2>
 
         {/* Progress indicator for 2FA */}
-        {twoFactorRequired && (
+        {requiresTwoFactor && (
           <div className="mb-3 text-center" style={{ fontSize: "0.9rem", opacity: 0.8 }}>
             Step 2 of 2: Enter your authentication code
           </div>
@@ -166,8 +181,8 @@ const Login: React.FC = () => {
           </div>
         )}
 
-        {/* Conditional rendering based on twoFactorRequired */}
-        {!twoFactorRequired ? (
+        {/* Conditional rendering based on requiresTwoFactor */}
+        {!requiresTwoFactor ? (
           /* ========== NORMAL LOGIN FORM ========== */
           <form onSubmit={handleSubmit}>
             <div className="mb-3">

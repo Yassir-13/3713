@@ -1,5 +1,6 @@
-// src/context/AuthContext.tsx - Version Finale Propre
+// src/context/AuthContext.tsx - Version JWT corrigée
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 
 interface User {
   id: number;
@@ -93,8 +94,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setPendingCredentials(credentials || null);
   };
 
-  // Login function
+  // Login function - 🔧 Support JWT access_token
   const login = (userData: User, authToken: string) => {
+    console.log('🔧 AuthContext: Logging in user with JWT token');
     setUser(userData);
     setToken(authToken);
     setIsAuthenticated(true);
@@ -123,40 +125,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setPendingCredentials(null);
   };
 
-  // Submit two-factor authentication code
+  // 🔧 CORRECTION CRITIQUE : Submit two-factor authentication code
   const submitTwoFactor = async (code: string) => {
     if (!pendingCredentials || !pendingUserId) {
       throw new Error('No pending 2FA authentication');
     }
 
+    console.log('🔧 AuthContext: Submitting 2FA code for user:', pendingUserId);
+
     try {
-      const response = await fetch('http://localhost:8000/api/login', {
-        method: 'POST',
+      // 🔧 NOUVELLE APPROCHE : Utiliser axios directement SANS intercepteur
+      // pour éviter d'envoyer un Bearer token qu'on n'a pas encore
+      const response = await axios.post('http://localhost:8000/api/auth/verify-2fa', {
+        user_id: pendingUserId,
+        email: pendingCredentials.email,
+        password: pendingCredentials.password,
+        two_factor_code: code,
+      }, {
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          email: pendingCredentials.email,
-          password: pendingCredentials.password,
-          two_factor_code: code,
-        }),
+          'Accept': 'application/json'
+          // 🔧 PAS de Authorization header ici !
+        }
       });
 
-      const data = await response.json();
+      console.log('🔧 AuthContext: 2FA verification response:', response.data);
 
-      if (!response.ok) {
-        throw new Error(data.message || '2FA verification failed');
-      }
+      const data = response.data;
 
-      if (data.user && data.token) {
-        login(data.user, data.token);
+      // 🔧 JWT retourne access_token
+      if (data.user && data.access_token) {
+        login(data.user, data.access_token);
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('Invalid response from 2FA verification');
       }
 
-    } catch (error) {
-      throw error;
+    } catch (error: any) {
+      console.error('🔧 AuthContext: 2FA verification error:', error);
+      
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      } else {
+        throw new Error('2FA verification failed');
+      }
     }
   };
 

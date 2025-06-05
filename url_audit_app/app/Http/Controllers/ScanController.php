@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ScanResult;
 use App\Models\ScanHistory;
+use App\Services\JWTService;
 use Illuminate\Support\Str;
 use App\Jobs\ScanWebsite;
 use Illuminate\Http\Request;
@@ -15,19 +16,38 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class ScanController extends Controller
 {
-    /**
-     * Méthode utilitaire pour obtenir l'utilisateur authentifié via Sanctum
-     */
-    private function getAuthenticatedUser()
+    protected JWTService $jwtService;
+
+    public function __construct(JWTService $jwtService)
     {
-        // Essayer d'abord avec le guard sanctum (pour les tokens Bearer)
-        $user = Auth::guard('sanctum')->user();
-        if ($user) {
-            return $user;
+        $this->jwtService = $jwtService;
+    }
+
+    /**
+     * Méthode utilitaire pour obtenir l'utilisateur authentifié via JWT
+     */
+    private function getAuthenticatedUser(Request $request)
+    {
+        // Le middleware JWT aura injecté le payload
+        $payload = $request->attributes->get('jwt_payload');
+        
+        if (!$payload) {
+            Log::warning('JWT Payload missing in ScanController', [
+                'path' => $request->path(),
+                'method' => $request->method()
+            ]);
+            return null;
         }
         
-        // Fallback sur le guard web (pour les sessions)
-        return Auth::guard('web')->user();
+        // Retourner un objet user avec les données du token
+        return (object) [
+            'id' => $payload->sub,
+            'email' => $payload->user->email,
+            'name' => $payload->user->name,
+            'two_factor_enabled' => $payload->user->two_factor_enabled,
+            'permissions' => $payload->security->scan_permissions ?? [],
+            'quotas' => $payload->quotas ?? (object)['daily_scans' => 10]
+        ];
     }
 
     /**
@@ -104,9 +124,9 @@ class ScanController extends Controller
     }
 
     /**
-     * LANCEMENT DE SCAN - SÉCURISÉ
+     * LANCEMENT DE SCAN - Adapté pour JWT
      */
-    public function scan(Request $request)
+   public function scan(Request $request)
     {
         // SÉCURITÉ 1: Validation stricte des entrées
         $request->validate([
@@ -127,13 +147,36 @@ class ScanController extends Controller
         
         $url = $urlValidation['url'];
         
-        // SÉCURITÉ 3: Rate limiting par utilisateur (au-delà du middleware)
-        $user = $this->getAuthenticatedUser();
+        // SÉCURITÉ 3: Récupérer user depuis JWT
+        $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return response()->json([
                 'message' => 'Authentication required',
-                'error' => 'You must be logged in to perform scans'
+                'error' => 'Token JWT invalide ou payload manquant'
             ], 401);
+        }
+        
+        // 🔧 CORRECTION : Vérifier permissions de scan depuis le token
+        if (!in_array('basic_scan', $user->permissions)) {
+            Log::warning('Scan permission denied', [
+                'user_id' => $user->id,
+                'required' => 'basic_scan',
+                'has_permissions' => $user->permissions
+            ]);
+            
+            return response()->json([
+                'message' => 'Permission denied',
+                'error' => 'Autorisation de scan requise'
+            ], 403);
+        }
+        
+        // Vérifier quotas depuis le token
+        $dailyScans = $user->quotas->daily_scans ?? 10;
+        if ($dailyScans <= 0) {
+            return response()->json([
+                'message' => 'Quota exceeded',
+                'error' => 'Limite de scans journaliers atteinte'
+            ], 429);
         }
         
         $rateLimitKey = 'scan-limit:' . $user->id;
@@ -146,9 +189,9 @@ class ScanController extends Controller
             ], 429);
         }
         
-        RateLimiter::hit($rateLimitKey, 3600); // 1 heure
+        RateLimiter::hit($rateLimitKey, 3600);
         
-        // SÉCURITÉ 4: Vérifier les scans récents pour éviter le spam
+        // Vérifier les scans récents
         $recentScan = ScanResult::where('url', $url)
                                 ->where('user_id', $user->id)
                                 ->where('created_at', '>', now()->subMinutes(5))
@@ -165,45 +208,30 @@ class ScanController extends Controller
             ], 200);
         }
         
-        // SÉCURITÉ 5: Vérifier si un scan récent existe déjà (optimisation)
-        $existingScan = ScanResult::where('url', $url)
-                                  ->where('status', 'completed')
-                                  ->where('created_at', '>', now()->subHours(24))
-                                  ->latest()
-                                  ->first();
-
-        if ($existingScan) {
-            return response()->json([
-                'message' => 'Recent scan found',
-                'scan_id' => $existingScan->scan_id,
-                'url' => $existingScan->url,
-                'status' => $existingScan->status,
-                'created_at' => $existingScan->created_at,
-                'is_cached' => true
-            ], 200);
-        }
-        
         try {
-            // SÉCURITÉ 6: Création du scan avec association utilisateur
-             $scan = ScanResult::create([
+            // Création du scan
+            $scan = ScanResult::create([
                 'scan_id' => Str::uuid(),
                 'url' => $url,
                 'status' => 'pending',
                 'user_id' => $user->id
             ]);
+            
             ScanHistory::create([
-            'scan_id' => $scan->scan_id,
-            'user_id' => $user->id,
-            'url' => $url,
-            'status' => 'pending'
-        ]);
-            // Lancer le job sécurisé
+                'scan_id' => $scan->scan_id,
+                'user_id' => $user->id,
+                'url' => $url,
+                'status' => 'pending'
+            ]);
+            
+            // Lancer le job
             ScanWebsite::dispatch($url, $scan->scan_id)->delay(now()->addSeconds(2));
             
-            Log::info("Secure scan started", [
+            Log::info("JWT Secure scan started", [
                 'scan_id' => $scan->scan_id,
                 'user_id' => $user->id,
                 'url_host' => $urlValidation['host'],
+                'permissions' => $user->permissions,
                 'ip' => $request->ip()
             ]);
             
@@ -212,11 +240,12 @@ class ScanController extends Controller
                 'scan_id' => $scan->scan_id,
                 'url' => $url,
                 'status' => 'pending',
-                'estimated_duration' => '5-15 minutes'
+                'estimated_duration' => '5-15 minutes',
+                'user_permissions' => $user->permissions
             ], 202);
             
         } catch (\Exception $e) {
-            Log::error("Secure scan creation failed", [
+            Log::error("JWT Secure scan creation failed", [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
                 'url_host' => $urlValidation['host'] ?? 'unknown',
@@ -229,13 +258,11 @@ class ScanController extends Controller
             ], 500);
         }
     }
-
     /**
-     * RÉCUPÉRATION DES RÉSULTATS - SÉCURISÉE
+     * RÉCUPÉRATION DES RÉSULTATS - Adapté pour JWT
      */
-    public function getResults($scan_id)
+    public function getResults(Request $request, $scan_id)
     {
-        // SÉCURITÉ 1: Validation du scan_id
         if (!Str::isUuid($scan_id)) {
             return response()->json([
                 'message' => 'Invalid scan ID format',
@@ -253,12 +280,12 @@ class ScanController extends Controller
                 ], 404);
             }
             
-            // Contrôle d'accès - L'utilisateur peut-il voir ce scan ?
-            $user = $this->getAuthenticatedUser();
+            // 🔧 CORRECTION : Contrôle d'accès JWT
+            $user = $this->getAuthenticatedUser($request);
             if (!$user) {
                 return response()->json([
                     'message' => 'Authentication required',
-                    'error' => 'You must be logged in to view scan results'
+                    'error' => 'Token JWT invalide ou payload manquant'
                 ], 401);
             }
             
@@ -270,28 +297,22 @@ class ScanController extends Controller
                 ], 403);
             }
             
-            // Personnaliser les messages pour l'interface utilisateur
-            $clientMessage = null;
+            // Messages personnalisés
+            $clientMessage = match($scan->status) {
+                'timeout' => "Your scan is taking longer than expected. Please be patient, we're still working on it.",
+                'failed' => "We encountered an issue while scanning this website. Please check back in a few minutes.",
+                'running' => "Your scan is in progress. This may take several minutes for complex websites.",
+                'completed' => "Ta-da ! Your scan is completed! You can now check the results.",
+                default => "Scan status: " . $scan->status
+            };
             
-            if ($scan->status === 'timeout') {
-                $clientMessage = "Your scan is taking longer than expected. Please be patient, we're still working on it.";
-            } elseif ($scan->status === 'failed') {
-                $clientMessage = "We encountered an issue while scanning this website. Please check back in a few minutes.";
-            } elseif ($scan->status === 'running') {
-                $clientMessage = "Your scan is in progress. This may take several minutes for complex websites.";
-            } elseif ($scan->status === 'completed') {
-                $clientMessage = "Ta-da ! Your scan is completed! You can now check the results.";
-            }
-            
-            // Log d'accès sécurisé
-            Log::info("Secure scan results accessed", [
+            Log::info("JWT Secure scan results accessed", [
                 'scan_id' => $scan->scan_id,
                 'user_id' => $user->id,
                 'scan_status' => $scan->status,
-                'ip' => request()->ip()
+                'ip' => $request->ip()
             ]);
             
-            // Retourner les résultats, incluant l'analyse Gemini si disponible
             return response()->json([
                 'id' => $scan->scan_id,
                 'scan_id' => $scan->scan_id,
@@ -309,11 +330,10 @@ class ScanController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error("Secure get results error", [
+            Log::error("JWT Secure get results error", [
                 'error' => $e->getMessage(),
                 'scan_id' => $scan_id,
-                'user_id' => $user?->id ?? 'unknown',
-                'ip' => request()->ip()
+                'ip' => $request->ip()
             ]);
             
             return response()->json([
@@ -324,12 +344,12 @@ class ScanController extends Controller
     }
 
     /**
-     * RECHERCHE DE SCANS - SÉCURISÉE
+     * RECHERCHE DE SCANS - Adapté pour JWT
      */
     public function searchScans(Request $request)
     {   
         //Authentification requise
-        $user = $this->getAuthenticatedUser();
+        $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return response()->json(['message' => 'Authentication required'], 401);
         }
@@ -374,7 +394,7 @@ class ScanController extends Controller
             return response()->json($formattedScans);
             
         } catch (\Exception $e) {
-            Log::error("Secure search scans error", [
+            Log::error("JWT Secure search scans error", [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
                 'query_length' => strlen($query ?? ''),
@@ -389,17 +409,17 @@ class ScanController extends Controller
     }
 
     /**
-     * SCANS UTILISATEUR - SÉCURISÉ
+     * SCANS UTILISATEUR - Adapté pour JWT
      */
     public function getUserScans(Request $request)
     {
         // SÉCURITÉ 1: Authentification obligatoire
-        $user = $this->getAuthenticatedUser();
+        $user = $this->getAuthenticatedUser($request);
         
         if (!$user) {
             return response()->json([
                 'message' => 'Authentication required',
-                'error' => 'You must be logged in to view your scans'
+                'error' => 'Token JWT invalide'
             ], 401);
         }
         
@@ -437,7 +457,7 @@ class ScanController extends Controller
             return response()->json($formattedScans);
             
         } catch (\Exception $e) {
-            Log::error("Secure get user scans error", [
+            Log::error("JWT Secure get user scans error", [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
                 'ip' => $request->ip()
@@ -450,9 +470,9 @@ class ScanController extends Controller
         }
     }
 
-      public function toggleFavorite(Request $request, $scanId)
+    public function toggleFavorite(Request $request, $scanId)
     {
-        $user = $this->getAuthenticatedUser();
+        $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return response()->json(['message' => 'Authentication required'], 401);
         }
@@ -481,7 +501,7 @@ class ScanController extends Controller
 
     public function getFavorites(Request $request)
     {
-        $user = $this->getAuthenticatedUser();
+        $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return response()->json(['message' => 'Authentication required'], 401);
         }
@@ -500,16 +520,16 @@ class ScanController extends Controller
     }
 
     /**
-     * GÉNÉRATION DE RAPPORT - SÉCURISÉE
+     * GÉNÉRATION DE RAPPORT - Adapté pour JWT
      */
     public function generateReport(Request $request)
     {
         // SÉCURITÉ 1: Authentification requise
-        $user = $this->getAuthenticatedUser();
+        $user = $this->getAuthenticatedUser($request);
         if (!$user) {
             return response()->json([
                 'message' => 'Authentication required',
-                'error' => 'You must be logged in to generate reports'
+                'error' => 'Token JWT invalide'
             ], 401);
         }
         
@@ -567,7 +587,7 @@ class ScanController extends Controller
             // Relancer l'analyse Gemini
             ScanWebsite::dispatch($scan->url, $scan->scan_id)->delay(now());
             
-            Log::info("Secure report generation requested", [
+            Log::info("JWT Secure report generation requested", [
                 'scan_id' => $scan_id,
                 'user_id' => $user->id,
                 'url_host' => parse_url($scan->url, PHP_URL_HOST),
@@ -582,7 +602,7 @@ class ScanController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error("Secure generate report error", [
+            Log::error("JWT Secure generate report error", [
                 'error' => $e->getMessage(),
                 'scan_id' => $scan_id,
                 'user_id' => $user->id,

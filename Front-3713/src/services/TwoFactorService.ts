@@ -1,5 +1,5 @@
 // src/services/TwoFactorService.ts
-// 🔐 Service API pour le système A2F 3713
+// 🔐 Service API pour le système A2F 3713 - Version JWT
 
 import api from '../config/api';
 import { 
@@ -92,11 +92,11 @@ class TwoFactorService {
   }
 
   /**
-   * Login avec A2F (extension du login classique)
+   * 🔧 MODIFIÉ : Login avec A2F (extension du login JWT)
    */
   async loginWithTwoFactor(email: string, password: string, twoFactorCode?: string) {
     try {
-      const response = await api.post('/login', {
+      const response = await api.post('/auth/login', {
         email,
         password,
         two_factor_code: twoFactorCode

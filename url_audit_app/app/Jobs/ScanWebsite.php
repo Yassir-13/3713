@@ -676,17 +676,35 @@ class ScanWebsite implements ShouldQueue
      * Validation sécurisée des variables d'environnement
      */
     private function getSecureEnvValue($key, $default)
-    {
-        $value = env($key, $default);
-        
-        // Validation basique pour éviter l'injection
-        if (strlen($value) > 200 || preg_match('/[<>&"|]/', $value)) {
-            Log::warning("Variable d'environnement potentiellement dangereuse détectée", ['key' => $key]);
-            return $default;
-        }
-        
-        return $value;
+{
+    $value = env($key, $default);
+    
+    // 🔧 CORRECTION: Log pour debug
+    Log::info("Getting env value", [
+        'key' => $key,
+        'has_value' => !empty($value),
+        'value_length' => strlen($value ?? ''),
+        'scan_id' => $this->scan_id
+    ]);
+    
+    // 🔧 CORRECTION: Validation moins restrictive
+    if (empty($value)) {
+        Log::warning("Environment variable is empty", ['key' => $key, 'scan_id' => $this->scan_id]);
+        return $default;
     }
+    
+    // 🔧 CORRECTION: Seulement vérifier la longueur extrême et caractères dangereux
+    if (strlen($value) > 500 || preg_match('/[<>&"|;`$()]/', $value)) {
+        Log::warning("Environment variable potentially dangerous", [
+            'key' => $key, 
+            'length' => strlen($value),
+            'scan_id' => $this->scan_id
+        ]);
+        return $default;
+    }
+    
+    return $value;
+}
 
     /**
      * Validation du host ZAP
@@ -1426,68 +1444,115 @@ EOT;
     /**
      * Appel sécurisé à l'API Gemini
      */
-    private function callGeminiAPI($prompt)
-    {
-        // Validation sécurisée des clés API
-        $apiKey = $this->getSecureEnvValue('GEMINI_API_KEY', '');
-        $apiUrl = $this->getSecureEnvValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
+   private function callGeminiAPI($prompt)
+{
+    // 🔧 CORRECTION: Essayer plusieurs méthodes pour récupérer la clé
+    $apiKey = null;
+    
+    // Méthode 1: getSecureEnvValue
+    $apiKey = $this->getSecureEnvValue('GEMINI_API_KEY', '');
+    
+    // Méthode 2: Fallback direct avec env()
+    if (empty($apiKey)) {
+        $apiKey = env('GEMINI_API_KEY', '');
+        Log::info("Fallback to direct env()", [
+            'has_key' => !empty($apiKey),
+            'scan_id' => $this->scan_id
+        ]);
+    }
+    
+    // Méthode 3: Fallback avec config()
+    if (empty($apiKey)) {
+        $apiKey = config('services.gemini.api_key', '');
+        Log::info("Fallback to config()", [
+            'has_key' => !empty($apiKey),
+            'scan_id' => $this->scan_id
+        ]);
+    }
+    
+    if (empty($apiKey)) {
+        Log::error('Gemini API key not found with any method', [
+            'scan_id' => $this->scan_id,
+            'env_gemini_set' => !empty(env('GEMINI_API_KEY')),
+            'config_gemini_set' => !empty(config('services.gemini.api_key'))
+        ]);
+        return "Automatic analysis could not be generated: API key not configured properly.";
+    }
+    
+    // 🔧 CORRECTION: URL avec fallback aussi
+    $apiUrl = $this->getSecureEnvValue(
+        'GEMINI_API_URL', 
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+    );
+    
+    try {
+        Log::info("Calling Gemini API", [
+            'scan_id' => $this->scan_id,
+            'api_url_length' => strlen($apiUrl),
+            'api_key_length' => strlen($apiKey)
+        ]);
         
-        if (empty($apiKey)) {
-            Log::warning('Gemini API key not configured (secure mode)', ['scan_id' => $this->scan_id]);
-            return "Automatic analysis could not be generated because the API key is not configured in secure mode.";
-        }
-        
-        try {
-            // Construction sécurisée du corps de requête
-            $requestBody = [
-                'contents' => [
-                    [
-                        'parts' => [
-                            ['text' => $prompt]
-                        ]
-                    ]
-                ],
-                'generationConfig' => [
-                    'temperature' => 0.2,
-                    'maxOutputTokens' => 1800
-                ],
-                'safetySettings' => [
-                    [
-                        'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
-                        'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
+        // Construction sécurisée du corps de requête
+        $requestBody = [
+            'contents' => [
+                [
+                    'parts' => [
+                        ['text' => $prompt]
                     ]
                 ]
-            ];
-            
-            // Appel API sécurisé
-            $response = Http::timeout(30)->retry(3, 1000)->withHeaders([
+            ],
+            'generationConfig' => [
+                'temperature' => 0.2,
+                'maxOutputTokens' => 1800
+            ],
+            'safetySettings' => [
+                [
+                    'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
+                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
+                ]
+            ]
+        ];
+        
+        // 🔧 CORRECTION: Timeout et retry améliorés
+        $response = Http::timeout(45) // Augmenté de 30 à 45 secondes
+            ->retry(3, 2000) // 3 tentatives avec 2s entre chaque
+            ->withHeaders([
                 'Content-Type' => 'application/json',
                 'User-Agent' => '3713-Security-Scanner/1.0'
-            ])->post($apiUrl . '?key=' . urlencode($apiKey), $requestBody);
+            ])
+            ->post($apiUrl . '?key=' . urlencode($apiKey), $requestBody);
+        
+        if ($response->successful()) {
+            $data = $response->json();
             
-            if ($response->successful()) {
-                $data = $response->json();
-                
-                if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-                    Log::info("Gemini analysis generated successfully (secure mode)", ['scan_id' => $this->scan_id]);
-                    return $data['candidates'][0]['content']['parts'][0]['text'];
-                } else {
-                    Log::warning('Unexpected Gemini API response structure (secure mode)', ['scan_id' => $this->scan_id]);
-                    return "Automatic analysis could not be generated (unexpected response format in secure mode).";
-                }
-            } else {
-                Log::error('Gemini API error (secure mode)', [
-                    'status' => $response->status(),
-                    'scan_id' => $this->scan_id
+            if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                Log::info("Gemini analysis generated successfully", [
+                    'scan_id' => $this->scan_id,
+                    'response_length' => strlen($data['candidates'][0]['content']['parts'][0]['text'])
                 ]);
-                return "Automatic analysis could not be generated due to an external API error in secure mode.";
+                return $data['candidates'][0]['content']['parts'][0]['text'];
+            } else {
+                Log::warning('Unexpected Gemini API response structure', [
+                    'scan_id' => $this->scan_id,
+                    'response_keys' => array_keys($data)
+                ]);
+                return "Automatic analysis could not be generated: Unexpected API response format.";
             }
-        } catch (\Exception $e) {
-            Log::error("Exception when calling Gemini API (secure mode)", [
-                'error' => $e->getMessage(),
+        } else {
+            Log::error('Gemini API HTTP error', [
+                'status' => $response->status(),
+                'response' => $response->body(),
                 'scan_id' => $this->scan_id
             ]);
-            return "Automatic analysis could not be generated due to an error in secure mode: " . $e->getMessage();
+            return "Automatic analysis could not be generated: API request failed (HTTP {$response->status()}).";
         }
+    } catch (\Exception $e) {
+        Log::error("Exception when calling Gemini API", [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'scan_id' => $this->scan_id
+        ]);
+        return "Automatic analysis could not be generated: " . $e->getMessage();
     }
+}
 }

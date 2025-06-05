@@ -26,101 +26,120 @@ const Scanner: React.FC = () => {
   const navigate = useNavigate();
 
   // Effet pour gérer le polling des résultats avec backoff exponentiel
-  useEffect(() => {
-    let pollingTimeoutId: number | null = null;
-    let currentInterval = 2000; // Commencer à 2 secondes
-    const maxInterval = 30000;   // Maximum 30 secondes
-    const backoffFactor = 1.5;   // Facteur de croissance
-    
-    let consecutiveErrors = 0;
+useEffect(() => {
+  let pollingTimeoutId: number | null = null;
+  let currentInterval = 5000; // 🔧 Commencer à 5 secondes (au lieu de 2)
+  const maxInterval = 45000;   // 🔧 Maximum 45 secondes (au lieu de 30)
+  const backoffFactor = 1.3;   // 🔧 Croissance plus modérée
+  
+  let consecutiveErrors = 0;
+  let consecutiveRunning = 0; // 🆕 Nouveau : compter les statuts "running"
 
-    const executePoll = async () => {
-      if (!scanId || !loading) return;
+  const executePoll = async () => {
+    if (!scanId || !loading) return;
 
-      try {
-        const resultData = await ScanService.getScanResult(scanId);
+    try {
+      console.log(`🔧 Polling attempt - Interval: ${currentInterval}ms`);
+      
+      const resultData = await ScanService.getScanResult(scanId);
 
-        // Mettre à jour le nombre de tentatives
-        setPollCount(prev => prev + 1);
-        
-        // Mettre à jour le statut du scan
-        setScanStatus(resultData.status);
-        
-        // Enregistrer le message utilisateur
-        if (resultData.user_message) {
-          setUserMessage(resultData.user_message);
-        }
-        
-        // Réinitialiser les erreurs consécutives
-        consecutiveErrors = 0;
-        
-        // Vérifier les différents statuts
-        if (resultData.status === 'completed') {
+      // Mettre à jour le nombre de tentatives
+      setPollCount(prev => prev + 1);
+      setScanStatus(resultData.status);
+      
+      if (resultData.user_message) {
+        setUserMessage(resultData.user_message);
+      }
+      
+      // Réinitialiser les erreurs consécutives
+      consecutiveErrors = 0;
+      
+      // 🔧 LOGIC OPTIMISÉE selon le statut
+      if (resultData.status === 'completed') {
+        console.log('✅ Scan completed - stopping polling');
         setScanResult(resultData);
         setLoading(false);
         setScansHistory(prevHistory => [resultData, ...prevHistory]);
-        
-        // Sauvegarder dans localStorage pour l'historique local
         ScanService.saveScanToLocalStorage(resultData);
-  
-        return; // Arrêter le polling
-        } 
-        else if (resultData.status === 'failed') {
-          setScanResult(resultData);
-          setLoading(false);
-          return; // Arrêter le polling
-        }
-        else if (resultData.status === 'timeout') {
-          setScanResult(resultData);
-          // Augmenter l'intervalle pour les timeouts
-          currentInterval = Math.min(currentInterval * backoffFactor, maxInterval);
-        }
-        
-        // Protection après 180 tentatives
-        if (pollCount > 180) {
-          setUserMessage("The scan is taking a long time. You can check back later for results.");
-          setLoading(false);
-          return;
-        }
-        
-        // Continuer le polling avec l'intervalle actuel
-        pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
-        
-      } catch (err: any) {
-        // Incrémenter les erreurs consécutives
-        consecutiveErrors++;
-        
-        // Log de débogage
-        console.warn("Polling error:", err.message);
-        
-        // Après 3 erreurs consécutives, augmenter l'intervalle
-        if (consecutiveErrors >= 3) {
-          currentInterval = Math.min(currentInterval * backoffFactor, maxInterval);
-          consecutiveErrors = 0; // Réinitialiser après augmentation
-        }
-        
-        // Afficher un message d'erreur après plusieurs échecs
-        if (consecutiveErrors % 5 === 0) {
-          setError(`Connection issue: ${err.message}. We'll keep trying...`);
-        }
-        
-        // Continuer le polling même en cas d'erreur
-        pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
+        return; // ✅ Arrêter le polling
+      } 
+      else if (resultData.status === 'failed') {
+        console.log('❌ Scan failed - stopping polling');
+        setScanResult(resultData);
+        setLoading(false);
+        return; // ✅ Arrêter le polling
       }
-    };
-
-    // Démarrer le polling immédiatement
-    if (scanId && loading) {
-      executePoll();
+      else if (resultData.status === 'timeout') {
+        console.log('⏰ Scan timeout - increasing interval');
+        setScanResult(resultData);
+        // 🔧 Augmenter drastiquement l'intervalle pour les timeouts
+        currentInterval = Math.min(currentInterval * 2, maxInterval);
+      }
+      else if (resultData.status === 'running') {
+        consecutiveRunning++;
+        console.log(`🔄 Scan running (${consecutiveRunning} times)`);
+        
+        // 🆕 STRATÉGIE INTELLIGENTE : Plus le scan dure, moins on poll fréquemment
+        if (consecutiveRunning > 5) {
+          currentInterval = Math.min(currentInterval * backoffFactor, maxInterval);
+          console.log(`📈 Increased polling interval to ${currentInterval}ms after ${consecutiveRunning} running statuses`);
+        }
+      }
+      else if (resultData.status === 'pending') {
+        console.log('⏳ Scan pending - keeping short interval');
+        // Garder un intervalle court pour "pending" -> "running"
+        currentInterval = Math.max(currentInterval, 8000); // Minimum 8 secondes
+      }
+      
+      // 🔧 PROTECTION contre polling infini
+      if (pollCount > 120) { // 🔧 Réduire de 180 à 120
+        console.log('🛑 Maximum poll attempts reached');
+        setUserMessage("The scan is taking longer than expected. Please check back later.");
+        setLoading(false);
+        return;
+      }
+      
+      // 🔧 PROGRAMMER le prochain poll avec l'intervalle actuel
+      console.log(`⏰ Next poll in ${currentInterval}ms`);
+      pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
+      
+    } catch (err: any) {
+      consecutiveErrors++;
+      console.warn(`🔧 Polling error #${consecutiveErrors}:`, err.message);
+      
+      // 🔧 Backoff plus agressif sur erreurs
+      if (consecutiveErrors >= 2) {
+        currentInterval = Math.min(currentInterval * 1.8, maxInterval);
+        console.log(`📈 Error backoff - new interval: ${currentInterval}ms`);
+      }
+      
+      // 🔧 Arrêter après 5 erreurs consécutives (au lieu de continuer indéfiniment)
+      if (consecutiveErrors >= 5) {
+        console.error('🛑 Too many polling errors - stopping');
+        setError('Connection issues detected. Please refresh the page.');
+        setLoading(false);
+        return;
+      }
+      
+      // Continuer le polling même en cas d'erreur, mais avec backoff
+      pollingTimeoutId = window.setTimeout(executePoll, currentInterval);
     }
+  };
 
-    // Nettoyage
-    return () => {
-      if (pollingTimeoutId !== null) {
-        window.clearTimeout(pollingTimeoutId);
-      }
-    };
-  }, [scanId, loading]); // Dépendances minimales pour éviter les boucles
+  // 🔧 DÉMARRER le polling seulement si on a un scanId et qu'on est en loading
+  if (scanId && loading) {
+    console.log('🚀 Starting optimized polling for scan:', scanId);
+    executePoll();
+  }
+
+  // 🔧 NETTOYAGE obligatoire
+  return () => {
+    if (pollingTimeoutId !== null) {
+      console.log('🧹 Cleaning up polling timeout');
+      window.clearTimeout(pollingTimeoutId);
+    }
+  };
+}, [scanId, loading]);// Dépendances minimales pour éviter les boucles
 
   // Effet pour charger l'historique des scans au chargement du composant
   useEffect(() => {

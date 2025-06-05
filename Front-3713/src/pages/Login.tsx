@@ -1,4 +1,4 @@
-// src/pages/Login.tsx - Version Simplifiée
+// src/pages/Login.tsx - VERSION CORRIGÉE
 import React, { useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
@@ -12,7 +12,6 @@ interface LocationState {
 }
 
 const Login: React.FC = () => {
-  // Local states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,19 +21,17 @@ const Login: React.FC = () => {
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [pendingUserId, setPendingUserId] = useState<number | null>(null);
 
-  // Context and navigation
   const { login, isAuthenticated } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/scanner');
     }
   }, [isAuthenticated, navigate]);
 
-  // 🔧 FONCTION LOGIN SIMPLIFIÉE - Une seule route pour tout
+  // 🔧 CORRECTION : Sauvegarder aussi le refresh_token
   const performLogin = async (email: string, password: string, twoFactorCode?: string) => {
     console.log('🔧 DEBUG: Performing login', { 
       email, 
@@ -57,12 +54,19 @@ const Login: React.FC = () => {
         console.log('🔧 DEBUG: 2FA required for user:', data.user_id);
         setRequiresTwoFactor(true);
         setPendingUserId(data.user_id);
-        return false; // Login pas encore complet
+        return false;
       }
 
       // Login réussi
       if (data.user && data.access_token) {
         console.log('🔧 DEBUG: Login successful, calling context login');
+        
+        // 🔧 CORRECTION CRITIQUE : Sauvegarder le refresh_token
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+          console.log('🔧 DEBUG: Refresh token saved');
+        }
+        
         login(data.user, data.access_token);
         
         const state = location.state as LocationState;
@@ -84,7 +88,6 @@ const Login: React.FC = () => {
     }
   };
 
-  // 🔧 GESTION FORMULAIRE PRINCIPAL
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -100,7 +103,6 @@ const Login: React.FC = () => {
     }
   };
 
-  // 🔧 GESTION 2FA
   const handleTwoFactorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTwoFactorError('');
@@ -125,7 +127,6 @@ const Login: React.FC = () => {
     }
   };
 
-  // 🔧 ANNULATION 2FA
   const handleCancelTwoFactor = () => {
     setRequiresTwoFactor(false);
     setPendingUserId(null);
@@ -133,7 +134,6 @@ const Login: React.FC = () => {
     setTwoFactorError('');
   };
 
-  // Validation simple du code 2FA
   const isValidTwoFactorCode = (code: string) => {
     const cleanCode = code.replace(/\s/g, '');
     return /^\d{6}$/.test(cleanCode) || /^[A-Z0-9]{8}$/i.test(cleanCode);
@@ -157,19 +157,16 @@ const Login: React.FC = () => {
           minWidth: "400px",
         }}
       >
-        {/* Dynamic title */}
         <h2 className="text-center mb-4">
           {requiresTwoFactor ? 'Two-Factor Authentication' : 'Login'}
         </h2>
 
-        {/* Progress indicator for 2FA */}
         {requiresTwoFactor && (
           <div className="mb-3 text-center" style={{ fontSize: "0.9rem", opacity: 0.8 }}>
             Step 2 of 2: Enter your authentication code
           </div>
         )}
 
-        {/* Error messages */}
         {error && (
           <div className="alert alert-danger text-center mb-3">
             {error}
@@ -181,9 +178,7 @@ const Login: React.FC = () => {
           </div>
         )}
 
-        {/* Conditional rendering based on requiresTwoFactor */}
         {!requiresTwoFactor ? (
-          /* ========== NORMAL LOGIN FORM ========== */
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
               <label className="form-label">Email:</label>
@@ -223,9 +218,7 @@ const Login: React.FC = () => {
             </button>
           </form>
         ) : (
-          /* ========== TWO-FACTOR AUTHENTICATION FORM ========== */
           <form onSubmit={handleTwoFactorSubmit}>
-            {/* User info */}
             <div className="mb-3 p-2 text-center" style={{ 
               backgroundColor: "rgba(0,0,0,0.1)", 
               borderRadius: "4px" 
@@ -258,7 +251,6 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* 2FA buttons */}
             <div className="d-flex gap-2">
               <button  
                 type="submit"

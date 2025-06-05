@@ -1,5 +1,5 @@
 <?php
-// app/Http/Middleware/JWTAuth.php
+// app/Http/Middleware/JWTAuth.php - VERSION CORRIGÉE
 
 namespace App\Http\Middleware;
 
@@ -40,23 +40,15 @@ class JWTAuth
                 ], 401);
             }
             
-            // 🔧 CORRECTION : Vérifier les permissions avec accès sécurisé
+            // 🔧 CORRECTION CRITIQUE : Vérification sécurisée des permissions
             if (!empty($permissions)) {
-                // Accès sécurisé aux propriétés avec vérifications
-                $userPermissions = [];
-                
-                if (isset($payload->security) && 
-                    is_object($payload->security) && 
-                    isset($payload->security->scan_permissions) && 
-                    is_array($payload->security->scan_permissions)) {
-                    $userPermissions = $payload->security->scan_permissions;
-                }
+                $userPermissions = $this->extractUserPermissions($payload);
                 
                 Log::info('🔧 Permission Check Debug', [
                     'user_id' => $payload->sub ?? 'unknown',
                     'required_permissions' => $permissions,
                     'user_permissions' => $userPermissions,
-                    'payload_security' => isset($payload->security) ? 'exists' : 'missing'
+                    'endpoint' => $request->path()
                 ]);
                 
                 foreach ($permissions as $permission) {
@@ -70,26 +62,21 @@ class JWTAuth
                         
                         return response()->json([
                             'message' => 'Permission refusée',
-                            'error' => "Autorisation '$permission' requise",
-                            'user_permissions' => $userPermissions // Debug info
+                            'error' => "Autorisation '$permission' requise"
                         ], 403);
                     }
                 }
             }
             
-            // ✅ STOCKAGE DANS LES ATTRIBUTES (pas dans le body de la requête)
+            // ✅ STOCKAGE SÉCURISÉ dans les attributes
             $request->attributes->set('jwt_payload', $payload);
             
-            // Log pour audit avec accès sécurisé
+            // Log pour audit
             Log::info('🔑 JWT AUTH SUCCESS', [
                 'user_id' => $payload->sub ?? 'unknown',
                 'endpoint' => $request->path(),
                 'method' => $request->method(),
-                'permissions_checked' => $permissions,
-                'two_factor_verified' => (isset($payload->security) && 
-                                        isset($payload->security->two_factor_verified)) 
-                    ? $payload->security->two_factor_verified 
-                    : false
+                'permissions_checked' => $permissions
             ]);
             
             return $next($request);
@@ -98,7 +85,7 @@ class JWTAuth
             Log::info('JWT Token Expired', ['ip' => $request->ip()]);
             return response()->json([
                 'message' => 'Token expiré',
-                'error' => 'Veuillez renouveler votre token'
+                'error' => 'Veuillez renouveler votre token ou vous reconnecter'
             ], 401);
             
         } catch (\Firebase\JWT\SignatureInvalidException $e) {
@@ -112,8 +99,6 @@ class JWTAuth
             Log::error('JWT Middleware Error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
                 'ip' => $request->ip()
             ]);
             
@@ -122,5 +107,34 @@ class JWTAuth
                 'error' => 'Internal authentication error'
             ], 500);
         }
+    }
+
+    /**
+     * 🔧 NOUVELLE MÉTHODE : Extraction sécurisée des permissions
+     */
+    private function extractUserPermissions($payload): array
+    {
+        // Vérifications en cascade pour éviter les erreurs
+        if (!isset($payload->security)) {
+            Log::info('No security object in JWT payload', ['user_id' => $payload->sub ?? 'unknown']);
+            return ['basic_scan']; // Permissions par défaut
+        }
+        
+        if (!is_object($payload->security)) {
+            Log::warning('Security is not an object in JWT payload', ['user_id' => $payload->sub ?? 'unknown']);
+            return ['basic_scan'];
+        }
+        
+        if (!isset($payload->security->scan_permissions)) {
+            Log::info('No scan_permissions in JWT payload', ['user_id' => $payload->sub ?? 'unknown']);
+            return ['basic_scan'];
+        }
+        
+        if (!is_array($payload->security->scan_permissions)) {
+            Log::warning('scan_permissions is not an array in JWT payload', ['user_id' => $payload->sub ?? 'unknown']);
+            return ['basic_scan'];
+        }
+        
+        return $payload->security->scan_permissions;
     }
 }

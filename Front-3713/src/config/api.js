@@ -1,9 +1,8 @@
-// src/config/api.js - Version JWT améliorée
+// src/config/api.js - VERSION CORRIGÉE
 import axios from 'axios';
 
 const api = axios.create({
   baseURL: 'http://localhost:8000/api',
-  
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -26,15 +25,12 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Intercepteur de requête amélioré pour JWT
+// Intercepteur de requête
 api.interceptors.request.use(
   config => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Assurez-vous que les headers existent
       config.headers = config.headers || {};
-      
-      // 🔧 Force le header Authorization avec le Bearer token (même format qu'avant)
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -45,7 +41,7 @@ api.interceptors.request.use(
   }
 );
 
-// 🔧 NOUVEAU : Intercepteur de réponse amélioré avec refresh automatique JWT
+// 🔧 CORRECTION : Intercepteur de réponse avec bonne route refresh
 api.interceptors.response.use(
   response => response,
   async error => {
@@ -55,7 +51,6 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       
       if (isRefreshing) {
-        // Si on est déjà en train de refresh, attendre
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
@@ -70,12 +65,22 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // 🔧 Tenter un refresh du token
-        const refreshResponse = await api.post('/refresh');
-        const newToken = refreshResponse.data.access_token;
+        // 🔧 CORRECTION : Utiliser la bonne route /auth/refresh
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
+        }
+
+        const refreshResponse = await api.post('/auth/refresh', {
+          refresh_token: refreshToken
+        });
         
-        // Sauvegarder le nouveau token
+        const newToken = refreshResponse.data.access_token;
+        const newRefreshToken = refreshResponse.data.refresh_token;
+        
+        // Sauvegarder les nouveaux tokens
         localStorage.setItem('token', newToken);
+        localStorage.setItem('refresh_token', newRefreshToken);
         
         // Mettre à jour le header Authorization
         api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -83,19 +88,22 @@ api.interceptors.response.use(
         
         processQueue(null, newToken);
         
-        // Réessayer la requête originale
         return api(originalRequest);
         
       } catch (refreshError) {
-        // Le refresh a échoué, déconnecter l'utilisateur
         processQueue(refreshError, null);
         
         // Nettoyer le localStorage
         localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
         
-        // Rediriger vers login (optionnel)
         console.warn("Token refresh failed, user needs to login again");
+        
+        // Rediriger vers login si possible
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         
         return Promise.reject(refreshError);
       } finally {

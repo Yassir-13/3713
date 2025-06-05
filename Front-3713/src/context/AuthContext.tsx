@@ -1,4 +1,4 @@
-// src/context/AuthContext.tsx - Version JWT corrigée
+// src/context/AuthContext.tsx - CORRECTION VÉRIFIÉE pour votre implémentation JWT
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
@@ -10,7 +10,6 @@ interface User {
 }
 
 interface AuthContextType {
-  // Existing states
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
@@ -51,7 +50,6 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  // Existing states
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,7 +60,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [pendingUserId, setPendingUserId] = useState<number | null>(null);
   const [pendingCredentials, setPendingCredentials] = useState<{ email: string; password: string } | null>(null);
 
-  // Load from localStorage on startup
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem('user');
@@ -83,7 +80,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(false);
   }, []);
 
-  // Set two-factor authentication required
   const setTwoFactorRequired = (
     required: boolean, 
     userId?: number, 
@@ -94,7 +90,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setPendingCredentials(credentials || null);
   };
 
-  // Login function - 🔧 Support JWT access_token
   const login = (userData: User, authToken: string) => {
     console.log('🔧 AuthContext: Logging in user with JWT token');
     setUser(userData);
@@ -110,7 +105,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setPendingCredentials(null);
   };
 
-  // Logout function
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -118,6 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token'); // 🔧 Ajouté pour votre JWT
     
     // Clear 2FA state
     setTwoFactorRequiredState(false);
@@ -125,27 +120,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setPendingCredentials(null);
   };
 
-  // 🔧 CORRECTION CRITIQUE : Submit two-factor authentication code
+  // 🔧 CORRECTION CRITIQUE : Utiliser /auth/login (qui existe dans votre backend) 
+  // avec two_factor_code au lieu de /auth/verify-2fa (qui n'existe pas)
   const submitTwoFactor = async (code: string) => {
     if (!pendingCredentials || !pendingUserId) {
       throw new Error('No pending 2FA authentication');
     }
 
-    console.log('🔧 AuthContext: Submitting 2FA code for user:', pendingUserId);
+    console.log('🔧 AuthContext: Submitting 2FA code via /auth/login');
 
     try {
-      // 🔧 NOUVELLE APPROCHE : Utiliser axios directement SANS intercepteur
-      // pour éviter d'envoyer un Bearer token qu'on n'a pas encore
-      const response = await axios.post('http://localhost:8000/api/auth/verify-2fa', {
-        user_id: pendingUserId,
+      // 🔧 UTILISER VOTRE ROUTE EXISTANTE /auth/login avec two_factor_code
+      // C'est exactement ce que votre AuthController::login() attend !
+      const response = await axios.post('http://localhost:8000/api/auth/login', {
         email: pendingCredentials.email,
         password: pendingCredentials.password,
-        two_factor_code: code,
+        two_factor_code: code, // Votre AuthController vérifie ce champ
       }, {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
-          // 🔧 PAS de Authorization header ici !
         }
       });
 
@@ -153,8 +147,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       const data = response.data;
 
-      // 🔧 JWT retourne access_token
+      // 🔧 Votre JWT retourne access_token et refresh_token
       if (data.user && data.access_token) {
+        // 🔧 SAUVEGARDER LE REFRESH_TOKEN (manquait dans votre code original)
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+        }
+        
         login(data.user, data.access_token);
       } else {
         throw new Error('Invalid response from 2FA verification');
@@ -171,14 +170,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Clear two-factor authentication state
   const clearTwoFactor = () => {
     setTwoFactorRequiredState(false);
     setPendingUserId(null);
     setPendingCredentials(null);
   };
 
-  // Context value
   const contextValue: AuthContextType = {
     user,
     token,

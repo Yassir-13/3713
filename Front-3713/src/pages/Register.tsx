@@ -1,4 +1,4 @@
-// Front-3713/src/pages/Register.tsx - Version debug
+// Front-3713/src/pages/Register.tsx - VERSION CORRIGÉE
 import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -26,7 +26,6 @@ const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      // 🔧 DEBUG: Log de l'URL utilisée
       const apiUrl = 'http://localhost:8000/api/auth/register';
       console.log('🔧 DEBUG: API URL used:', apiUrl);
       console.log('🔧 DEBUG: Form data:', {
@@ -52,14 +51,21 @@ const Register: React.FC = () => {
         data: response.data,
         hasUser: !!response.data.user,
         hasAccessToken: !!response.data.access_token,
-        hasOldToken: !!response.data.token
+        hasRefreshToken: !!response.data.refresh_token
       });
 
-      // 🔧 JWT retourne 'access_token' au lieu de 'token'
-      const { user, access_token } = response.data;
+      // 🔧 CORRECTION : Récupérer access_token ET refresh_token
+      const { user, access_token, refresh_token } = response.data;
       
       if (user && access_token) {
-        console.log('🔧 DEBUG: Calling login with JWT token');
+        console.log('🔧 DEBUG: Calling login with JWT tokens');
+        
+        // 🔧 CORRECTION CRITIQUE : Sauvegarder le refresh_token
+        if (refresh_token) {
+          localStorage.setItem('refresh_token', refresh_token);
+          console.log('🔧 DEBUG: Refresh token saved during registration');
+        }
+        
         login(user, access_token);
         navigate('/scanner');
       } else {
@@ -104,11 +110,12 @@ const Register: React.FC = () => {
           color: "var(--text-color)",
           fontSize: "0.9rem",
           lineHeight: "1.6",
-          maxWidth: "800px",
+          maxWidth: "500px",
+          minWidth: "400px",
           textAlign: "left",
         }}
       >
-        <h2 className="text-center mb-4">Register (JWT Debug Mode)</h2>
+        <h2 className="text-center mb-4">Register</h2>
 
         {error && (
           <div className="alert alert-danger text-center mb-3">
@@ -186,10 +193,8 @@ const Register: React.FC = () => {
           </button>
         </form>
 
-        {/* Debug info */}
-        <div style={{ marginTop: '1rem', fontSize: '0.8rem', opacity: 0.7 }}>
-          <p>Debug: Using JWT endpoint /api/auth/register</p>
-          <p>Check browser console for detailed logs</p>
+        <div className="text-center mt-3">
+          <p>Already have an account? <a href="/login" style={{ color: 'var(--accent-color)' }}>Login here</a></p>
         </div>
       </div>
     </div>

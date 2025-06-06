@@ -1,4 +1,5 @@
 <?php
+// bootstrap/app.php - VERSION SÉCURISÉE FINALE avec middlewares actifs
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -13,28 +14,49 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // 🔧 CRITIQUE : Désactiver CSRF pour toutes les routes API
+        // 🔒 MIDDLEWARES DE SÉCURITÉ CRITIQUES
+        
+        // 1. Désactiver CSRF pour API (JWT utilisé)
         $middleware->validateCsrfTokens(except: [
             'api/*'
         ]);
         
-        // JWT middleware alias
+        // 2. ENREGISTREMENT des middlewares personnalisés
         $middleware->alias([
             'jwt.auth' => \App\Http\Middleware\JWTAuth::class,
+            'validate.headers' => \App\Http\Middleware\ValidateCustomHeaders::class,
+            'security.headers' => \App\Http\Middleware\SecurityHeaders::class,
         ]);
         
-        // API middleware 
+        // 3. MIDDLEWARE GLOBAL pour toutes les requêtes API
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
         
-        // Middleware priority
+        // 🔒 4. AJOUT GLOBAL des headers de sécurité
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+        
+        // 🔒 5. VALIDATION des headers personnalisés pour API
+        $middleware->appendToGroup('api', [
+            \App\Http\Middleware\ValidateCustomHeaders::class
+        ]);
+        
+        // 6. Priorité des middlewares
         $middleware->priority([
+            \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\ValidateCustomHeaders::class,
             \App\Http\Middleware\JWTAuth::class,
+        ]);
+        
+        // 🔒 7. MIDDLEWARE pour routes spécifiques
+        $middleware->group('secure-api', [
+            \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\ValidateCustomHeaders::class,
+            'throttle:api',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // 🔧 Corriger les handlers JWT (optionnel - corrige juste le warning)
+        // 🔒 Gestion sécurisée des erreurs JWT
         $exceptions->render(function (\Firebase\JWT\ExpiredException $exception) {
             Log::warning('JWT Token expired', ['message' => $exception->getMessage()]);
             return response()->json([
@@ -49,5 +71,17 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => 'Invalid token signature',
                 'error' => 'Authentication failed'
             ], 401);
+        });
+        
+        // 🔒 Gestion des erreurs de headers
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\BadRequestHttpException $exception) {
+            Log::warning('Bad request (possibly invalid headers)', [
+                'message' => $exception->getMessage(),
+                'ip' => request()->ip()
+            ]);
+            return response()->json([
+                'message' => 'Bad request',
+                'error' => 'Invalid request format or headers'
+            ], 400);
         });
     })->create();

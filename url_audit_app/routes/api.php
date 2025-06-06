@@ -66,3 +66,78 @@ Route::middleware('jwt.auth')->get('/jwt-debug', function (Request $request) {
         'two_factor_verified' => $payload->security->two_factor_verified ?? false
     ]);
 });
+
+Route::get('/security-test', function (Request $request) {
+    // Récupérer tous les headers de la requête
+    $allHeaders = $request->headers->all();
+    
+    // Headers spécifiques à 3713
+    $customHeaders = [
+        'X-API-Version' => $request->header('X-API-Version'),
+        'X-Client-ID' => $request->header('X-Client-ID'),
+        'X-Scan-Context' => $request->header('X-Scan-Context'),
+        'Origin' => $request->header('Origin'),
+        'User-Agent' => $request->header('User-Agent'),
+    ];
+    
+    // Test de validation
+    $validationTests = [
+        'cors_origin_allowed' => in_array($request->header('Origin'), [
+            'http://localhost:5173',
+            'http://localhost:3000',
+            'http://127.0.0.1:5173',
+            'http://127.0.0.1:3000'
+        ]),
+        'api_version_present' => !empty($request->header('X-API-Version')),
+        'client_id_format' => $request->header('X-Client-ID') ? 
+            preg_match('/^(client_[a-f0-9]+|3713_[a-f0-9]{16})$/', $request->header('X-Client-ID')) : 
+            null,
+        'security_middleware_active' => $request->hasHeader('X-3713-Security'),
+    ];
+    
+    return response()->json([
+        'message' => '🔒 3713 Security Test Response',
+        'timestamp' => now()->toISOString(),
+        'request_info' => [
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'ip' => $request->ip(),
+            'origin' => $request->header('Origin'),
+        ],
+        'custom_headers' => $customHeaders,
+        'validation_tests' => $validationTests,
+        'security_status' => [
+            'cors_enabled' => true,
+            'headers_validated' => true,
+            'environment' => app()->environment(),
+            'middleware_active' => [
+                'security_headers' => $request->hasHeader('X-3713-Security'),
+                'validation_headers' => $request->hasHeader('X-Validation-Status'),
+            ]
+        ],
+        'recommendations' => $this->getSecurityRecommendations($validationTests)
+    ]);
+})->name('security.test');
+
+// Fonction helper pour les recommandations
+function getSecurityRecommendations(array $tests): array {
+    $recommendations = [];
+    
+    if (!$tests['cors_origin_allowed']) {
+        $recommendations[] = "⚠️ Origin non autorisé détecté";
+    }
+    
+    if (!$tests['api_version_present']) {
+        $recommendations[] = "💡 Ajoutez le header X-API-Version";
+    }
+    
+    if ($tests['client_id_format'] === false) {
+        $recommendations[] = "⚠️ Format X-Client-ID invalide";
+    }
+    
+    if (empty($recommendations)) {
+        $recommendations[] = "✅ Tous les tests de sécurité passent";
+    }
+    
+    return $recommendations;
+}

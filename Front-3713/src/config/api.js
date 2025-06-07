@@ -1,11 +1,11 @@
-// src/config/api.js - VERSION SÉCURISÉE FINALE
+// src/config/api.js - INTERCEPTEUR CORRIGÉ
+
 import axios from 'axios';
 import secureFingerprinting from '../utils/secureFingerprinting.js';
 
-// 🔒 Configuration sécurisée de base
 const api = axios.create({
   baseURL: 'http://localhost:8000/api',
-  timeout: 30000, // 30 secondes timeout
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -13,7 +13,6 @@ const api = axios.create({
   }
 });
 
-// 🔒 Variables de session sécurisées
 let sessionMetadata = {
   scanProgress: null,
   remainingScans: null,
@@ -22,9 +21,9 @@ let sessionMetadata = {
   lastSecurityCheck: null
 };
 
-// 🔒 Anti-double refresh
 let isRefreshing = false;
 let failedQueue = [];
+let clientIdPromise = null;
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(prom => {
@@ -37,9 +36,6 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// 🔒 Initialisation asynchrone du fingerprinting
-let clientIdPromise = null;
-
 const getClientId = async () => {
   if (!clientIdPromise) {
     clientIdPromise = secureFingerprinting.generateSecureFingerprint();
@@ -47,131 +43,163 @@ const getClientId = async () => {
   return await clientIdPromise;
 };
 
-// 🔒 Intercepteur de requête SÉCURISÉ
+// 🔧 INTERCEPTEUR DE REQUÊTE CORRIGÉ
 api.interceptors.request.use(
   async config => {
     try {
-      // Authentification JWT
+      // 🔧 TOUJOURS ajouter X-API-Version
+      config.headers['X-API-Version'] = 'v1.0';
+      
       const token = localStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
 
-      // Client ID sécurisé
-      const clientId = await getClientId();
-      config.headers['X-Client-ID'] = clientId;
-      
-      // Headers contextuels sécurisés
-      if (config.url?.includes('/scan')) {
-        config.headers['X-Scan-Context'] = 'user_scan';
-        
-        // Anti-CSRF pour les scans (optionnel avec JWT)
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-        if (csrfToken) {
-          config.headers['X-CSRF-TOKEN'] = csrfToken;
+      // 🔧 Client-ID seulement si disponible (non-bloquant)
+      try {
+        const clientId = await getClientId();
+        if (clientId) {
+          config.headers['X-Client-ID'] = clientId;
         }
+      } catch (e) {
+        console.warn('🔧 Client-ID generation failed (non-blocking):', e.message);
+        // Continuer sans Client-ID en cas d'échec
       }
       
-      // Headers de sécurité additionnels
+      if (config.url?.includes('/scan')) {
+        config.headers['X-Scan-Context'] = 'user_scan';
+      }
+      
       config.headers['X-Requested-With'] = 'XMLHttpRequest';
       config.headers['Cache-Control'] = 'no-cache';
       
-      // Log sécurisé (sans données sensibles)
-      console.log('🔒 Secure Request:', {
+      console.log('🔒 Request headers:', {
         url: config.url?.substring(0, 50) + '...',
         method: config.method?.toUpperCase(),
         hasAuth: !!token,
-        clientId: clientId?.substring(0, 10) + '...',
-        timestamp: new Date().toISOString()
+        hasApiVersion: !!config.headers['X-API-Version'],
+        hasClientId: !!config.headers['X-Client-ID'],
       });
       
       return config;
     } catch (error) {
       console.error("🔒 Request interceptor error:", error);
-      return Promise.reject(error);
+      // 🔧 CORRECTION : Continuer même en cas d'erreur au lieu de rejeter
+      return config;
     }
   },
-  error => {
-    console.error("❌ Request error:", error);
-    return Promise.reject(error);
-  }
+  error => Promise.reject(error)
 );
 
-// 🔒 Intercepteur de réponse SÉCURISÉ  
+// Obtenir header case-insensitive
+const getHeaderCaseInsensitive = (headers, headerName) => {
+  const lowerHeaderName = headerName.toLowerCase();
+  
+  if (headers[lowerHeaderName] !== undefined) {
+    return headers[lowerHeaderName];
+  }
+  
+  const variations = [
+    headerName,
+    headerName.toLowerCase(),
+    headerName.toUpperCase(),
+    headerName.toLowerCase().replace(/(^|-)([a-z])/g, (match, p1, p2) => p1 + p2.toUpperCase())
+  ];
+  
+  for (const variation of variations) {
+    if (headers[variation] !== undefined) {
+      console.log(`🔧 Found header ${headerName} as ${variation}:`, headers[variation]);
+      return headers[variation];
+    }
+  }
+  
+  return undefined;
+};
+
+// Debug headers reçus
+const debugHeaders = (headers, context = '') => {
+  if (process.env.NODE_ENV === 'development') {
+    const relevantHeaders = {};
+    const headerNames = [
+      'x-ratelimit-remaining', 'x-scan-progress', 'x-security-score', 
+      'x-scan-id', 'x-3713-security', 'x-client-verified'
+    ];
+    
+    headerNames.forEach(name => {
+      const value = getHeaderCaseInsensitive(headers, name);
+      if (value !== undefined) {
+        relevantHeaders[name] = value;
+      }
+    });
+    
+    if (Object.keys(relevantHeaders).length > 0) {
+      console.log(`🔧 Headers received ${context}:`, relevantHeaders);
+    }
+  }
+};
+
+// 🔧 INTERCEPTEUR DE RÉPONSE SIMPLIFIÉ
 api.interceptors.response.use(
   response => {
     try {
-      // Validation de la réponse
       if (!response.headers) {
         console.warn('🔒 Response missing headers');
         return response;
       }
 
       const headers = response.headers;
+      debugHeaders(headers, `from ${response.config?.url}`);
       
-      // Validation de l'intégrité des headers 3713
-      if (headers['x-3713-security'] !== 'enabled') {
-        console.warn('🔒 Security header missing - potential proxy/cache issue');
+      // Validation de l'intégrité
+      const securityHeader = getHeaderCaseInsensitive(headers, 'x-3713-security');
+      if (securityHeader !== 'enabled') {
+        console.warn('🔒 Security header missing or invalid:', securityHeader);
       }
 
-      // Extraction sécurisée des métadonnées
+      // Extraction métadonnées avec case-insensitive
       const newMetadata = { ...sessionMetadata };
       
-      if (headers['x-ratelimit-remaining']) {
-        const remaining = parseInt(headers['x-ratelimit-remaining']);
+      const remainingHeader = getHeaderCaseInsensitive(headers, 'x-ratelimit-remaining');
+      if (remainingHeader) {
+        const remaining = parseInt(remainingHeader);
         if (!isNaN(remaining) && remaining >= 0) {
           newMetadata.remainingScans = remaining;
         }
       }
       
-      if (headers['x-scan-progress']) {
-        const progress = headers['x-scan-progress'];
-        if (typeof progress === 'string' && progress.length < 50) {
-          newMetadata.scanProgress = progress;
-        }
+      const progressHeader = getHeaderCaseInsensitive(headers, 'x-scan-progress');
+      if (progressHeader && typeof progressHeader === 'string' && progressHeader.length < 50) {
+        newMetadata.scanProgress = progressHeader;
       }
       
-      if (headers['x-security-score']) {
-        const score = parseFloat(headers['x-security-score']);
+      const scoreHeader = getHeaderCaseInsensitive(headers, 'x-security-score');
+      if (scoreHeader) {
+        const score = parseFloat(scoreHeader);
         if (!isNaN(score) && score >= 0 && score <= 10) {
           newMetadata.securityScore = score;
         }
       }
       
-      if (headers['x-scan-id']) {
-        const scanId = headers['x-scan-id'];
-        if (typeof scanId === 'string' && /^[a-f0-9\-]{36}$/.test(scanId)) {
-          newMetadata.currentScanId = scanId;
-        }
+      const scanIdHeader = getHeaderCaseInsensitive(headers, 'x-scan-id');
+      if (scanIdHeader && typeof scanIdHeader === 'string' && /^[a-f0-9\-]{36}$/.test(scanIdHeader)) {
+        newMetadata.currentScanId = scanIdHeader;
       }
 
-      // Mise à jour atomique des métadonnées
       sessionMetadata = newMetadata;
       sessionMetadata.lastSecurityCheck = Date.now();
       
-      // Dispatch sécurisé des événements
-      this.dispatchSecureEvents();
-      
-      // Log sécurisé de la réponse
-      console.log('✅ Secure Response:', {
-        status: response.status,
-        url: response.config?.url?.substring(0, 50) + '...',
-        hasData: !!response.data,
-        securityHeader: headers['x-3713-security'],
-        responseTime: headers['x-response-time'],
-        clientVerified: headers['x-client-verified'] === 'true'
-      });
+      api.dispatchSecureEvents();
       
       return response;
     } catch (error) {
       console.error('🔒 Response processing error:', error);
-      return response; // Retourner la réponse même en cas d'erreur de traitement
+      return response;
     }
   },
   async error => {
     const originalRequest = error.config;
     
-    // 🔒 Gestion sécurisée du refresh token
+    // 🔧 REFRESH TOKEN SIMPLIFIÉ
     if (error.response?.status === 401 && !originalRequest._retry && !isRefreshing) {
       
       if (isRefreshing) {
@@ -179,6 +207,7 @@ api.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         }).then(token => {
           originalRequest.headers['Authorization'] = `Bearer ${token}`;
+          originalRequest.headers['X-API-Version'] = 'v1.0'; // 🔧 AJOUTÉ
           return api(originalRequest);
         }).catch(err => Promise.reject(err));
       }
@@ -192,52 +221,46 @@ api.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        console.log('🔄 Refreshing token securely...');
+        console.log('🔄 Refreshing token...');
         
-        // Requête de refresh avec headers sécurisés
         const refreshResponse = await api.post('/auth/refresh', {
           refresh_token: refreshToken
         }, {
           headers: {
-            'X-Client-ID': await getClientId(),
-            'X-API-Version': 'v1.0'
+            'X-API-Version': 'v1.0', // 🔧 AJOUTÉ pour refresh
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
           }
         });
         
         const { access_token, refresh_token: newRefreshToken } = refreshResponse.data;
         
-        // Sauvegarde sécurisée
         localStorage.setItem('token', access_token);
         if (newRefreshToken) {
           localStorage.setItem('refresh_token', newRefreshToken);
         }
         
-        // Mise à jour des headers par défaut
         api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
         originalRequest.headers['Authorization'] = `Bearer ${access_token}`;
+        originalRequest.headers['X-API-Version'] = 'v1.0'; // 🔧 AJOUTÉ
         
         processQueue(null, access_token);
         
-        console.log('✅ Token refreshed securely');
+        console.log('✅ Token refreshed');
         return api(originalRequest);
         
       } catch (refreshError) {
-        console.error('❌ Secure token refresh failed:', refreshError);
+        console.error('❌ Token refresh failed:', refreshError);
         processQueue(refreshError, null);
-        
-        // Nettoyage sécurisé
-        this.secureLogout();
-        
+        api.secureLogout();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }
     }
     
-    // Log des erreurs avec contexte sécurisé
     console.error('❌ API Error:', {
       status: error.response?.status,
-      code: error.response?.data?.code,
       message: error.response?.data?.message?.substring(0, 100),
       url: error.config?.url?.substring(0, 50) + '...'
     });
@@ -246,7 +269,7 @@ api.interceptors.response.use(
   }
 );
 
-// 🔒 Méthodes utilitaires sécurisées
+// Méthodes utilitaires (identiques)
 api.dispatchSecureEvents = function() {
   try {
     if (sessionMetadata.remainingScans !== null) {
@@ -275,16 +298,13 @@ api.dispatchSecureEvents = function() {
 };
 
 api.secureLogout = function() {
-  // Nettoyage complet et sécurisé
   localStorage.removeItem('token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
   localStorage.removeItem('secure_fingerprint');
   
-  // Reset des headers
   delete api.defaults.headers.common['Authorization'];
   
-  // Reset des métadonnées
   sessionMetadata = {
     scanProgress: null,
     remainingScans: null,
@@ -293,22 +313,19 @@ api.secureLogout = function() {
     lastSecurityCheck: null
   };
   
-  // Redirection sécurisée
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
   }
 };
 
-// 🔒 Validation périodique de sécurité
+// Validation périodique de sécurité
 setInterval(() => {
   if (sessionMetadata.lastSecurityCheck && 
-      Date.now() - sessionMetadata.lastSecurityCheck > 300000) { // 5 minutes
+      Date.now() - sessionMetadata.lastSecurityCheck > 300000) {
     console.log('🔒 Security check timeout - refreshing session');
     api.secureLogout();
   }
-}, 60000); // Check chaque minute
+}, 60000);
 
-// 🔒 Export sécurisé
 export const getSessionMetadata = () => ({ ...sessionMetadata });
-export const clearSessionMetadata = api.clearSessionMetadata;
 export default api;

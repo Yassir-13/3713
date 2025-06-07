@@ -118,26 +118,3 @@ Route::get('/security-test', function (Request $request) {
         'recommendations' => $this->getSecurityRecommendations($validationTests)
     ]);
 })->name('security.test');
-
-// Fonction helper pour les recommandations
-function getSecurityRecommendations(array $tests): array {
-    $recommendations = [];
-    
-    if (!$tests['cors_origin_allowed']) {
-        $recommendations[] = "⚠️ Origin non autorisé détecté";
-    }
-    
-    if (!$tests['api_version_present']) {
-        $recommendations[] = "💡 Ajoutez le header X-API-Version";
-    }
-    
-    if ($tests['client_id_format'] === false) {
-        $recommendations[] = "⚠️ Format X-Client-ID invalide";
-    }
-    
-    if (empty($recommendations)) {
-        $recommendations[] = "✅ Tous les tests de sécurité passent";
-    }
-    
-    return $recommendations;
-}

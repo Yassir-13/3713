@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 use PragmaRX\Google2FA\Google2FA;
@@ -25,17 +24,54 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 📊 Obtenir le statut A2F de l'utilisateur
+     * 🔧 NOUVELLE MÉTHODE : Obtenir l'utilisateur authentifié via JWT
      */
-    public function getStatus()
+    private function getAuthenticatedUser(Request $request)
+    {
+        // Le middleware JWT aura injecté le payload
+        $payload = $request->attributes->get('jwt_payload');
+        
+        if (!$payload) {
+            Log::warning('JWT Payload missing in TwoFactorController', [
+                'path' => $request->path(),
+                'method' => $request->method()
+            ]);
+            return null;
+        }
+        
+        // Récupérer l'utilisateur réel depuis la base de données
+        // (nécessaire pour les opérations 2FA qui modifient la DB)
+        $user = User::find($payload->sub);
+        
+        if (!$user) {
+            Log::warning('User not found in database', [
+                'user_id' => $payload->sub,
+                'path' => $request->path()
+            ]);
+            return null;
+        }
+        
+        return $user;
+    }
+
+    /**
+     * 📊 CORRIGÉ : Obtenir le statut A2F de l'utilisateur
+     */
+    public function getStatus(Request $request)
     {
         try {
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
-            $user = Auth::user();
+            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
+            $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
                 return response()->json(['message' => 'User not authenticated'], 401);
             }
+
+            Log::info('2FA Status requested', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'current_2fa_status' => $user->two_factor_enabled ?? false
+            ]);
 
             return response()->json([
                 'enabled' => $user->two_factor_enabled ?? false,
@@ -53,13 +89,13 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔑 Générer le secret A2F et le QR code
+     * 🔑 CORRIGÉ : Générer le secret A2F et le QR code
      */
     public function generateSecret(Request $request)
     {
         try {
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
-            $user = Auth::user();
+            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
+            $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
                 return response()->json(['message' => 'User not authenticated'], 401);
@@ -79,11 +115,11 @@ class TwoFactorController extends Controller
             // Générer un nouveau secret A2F
             $secret = $this->google2fa->generateSecretKey();
             
-            // 🆕 MÉTHODE ALTERNATIVE POUR UPDATE
+            // Mettre à jour l'utilisateur
             $user->two_factor_secret = encrypt($secret);
             $user->two_factor_enabled = false;
             $user->two_factor_confirmed_at = null;
-            $user->save();  // 🆕 UTILISER save() au lieu de update()
+            $user->save();
 
             // Générer l'URL pour Google Authenticator
             $qrCodeUrl = $this->google2fa->getQRCodeUrl(
@@ -99,6 +135,11 @@ class TwoFactorController extends Controller
             );
             $writer = new Writer($renderer);
             $qrCodeSvg = $writer->writeString($qrCodeUrl);
+
+            Log::info('2FA Secret generated', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
 
             return response()->json([
                 'secret' => $secret,
@@ -116,13 +157,13 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * ✅ Confirmer et activer l'A2F
+     * ✅ CORRIGÉ : Confirmer et activer l'A2F
      */
     public function confirmTwoFactor(Request $request)
     {
         try {
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
-            $user = Auth::user();
+            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
+            $user = $this->getAuthenticatedUser($request);
             
             if (!$user || !$user->two_factor_secret) {
                 return response()->json(['message' => 'No 2FA secret found'], 400);
@@ -146,11 +187,11 @@ class TwoFactorController extends Controller
             // Générer et sauvegarder les codes de récupération
             $recoveryCodes = $this->generateRecoveryCodes();
             
-            // 🆕 MÉTHODE ALTERNATIVE POUR ACTIVATION
+            // Activer l'A2F
             $user->two_factor_enabled = true;
             $user->two_factor_confirmed_at = now();
             $user->two_factor_recovery_codes = encrypt($recoveryCodes->toJson());
-            $user->save();  // 🆕 UTILISER save() au lieu de update()
+            $user->save();
 
             Log::info("2FA enabled for user: {$user->email}");
 
@@ -170,13 +211,13 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * ❌ Désactiver l'A2F
+     * ❌ CORRIGÉ : Désactiver l'A2F
      */
     public function disableTwoFactor(Request $request)
     {
         try {
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
-            $user = Auth::user();
+            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
+            $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
                 return response()->json(['message' => 'User not authenticated'], 401);
@@ -202,12 +243,12 @@ class TwoFactorController extends Controller
                 }
             }
 
-            // 🆕 MÉTHODE ALTERNATIVE POUR DÉSACTIVATION
+            // Désactiver l'A2F
             $user->two_factor_secret = null;
             $user->two_factor_recovery_codes = null;
             $user->two_factor_confirmed_at = null;
             $user->two_factor_enabled = false;
-            $user->save();  // 🆕 UTILISER save() au lieu de update()
+            $user->save();
 
             Log::info("2FA disabled for user: {$user->email}");
 
@@ -226,13 +267,13 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔄 Régénérer les codes de récupération
+     * 🔄 CORRIGÉ : Régénérer les codes de récupération
      */
     public function regenerateRecoveryCodes(Request $request)
     {
         try {
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
-            $user = Auth::user();
+            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
+            $user = $this->getAuthenticatedUser($request);
             
             if (!$user || !$user->two_factor_enabled) {
                 return response()->json(['message' => '2FA not enabled'], 400);
@@ -248,9 +289,13 @@ class TwoFactorController extends Controller
 
             $recoveryCodes = $this->generateRecoveryCodes();
             
-            // 🆕 MÉTHODE ALTERNATIVE
             $user->two_factor_recovery_codes = encrypt($recoveryCodes->toJson());
-            $user->save();  // 🆕 UTILISER save() au lieu de update()
+            $user->save();
+
+            Log::info('Recovery codes regenerated', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
 
             return response()->json([
                 'backup_codes' => $recoveryCodes,
@@ -267,7 +312,7 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔍 Vérifier un code A2F (pour le login)
+     * 🔍 CORRIGÉ : Vérifier un code A2F (pour le login)
      */
     public function verifyCode(Request $request)
     {
@@ -277,7 +322,6 @@ class TwoFactorController extends Controller
                 'code' => 'required|string'
             ]);
 
-            /** @var User $user */  // 🆕 TYPE HINT EXPLICITE
             $user = User::find($request->user_id);
             
             if (!$user || !$user->two_factor_enabled || !$user->two_factor_secret) {
@@ -296,6 +340,10 @@ class TwoFactorController extends Controller
             $isValid = $this->google2fa->verifyKey($secret, $code, 2);
 
             if ($isValid) {
+                Log::info('2FA code verified successfully', [
+                    'user_id' => $user->id
+                ]);
+
                 return response()->json([
                     'valid' => true,
                     'message' => '2FA code verified successfully'
@@ -333,7 +381,7 @@ class TwoFactorController extends Controller
     /**
      * Vérifier un code de récupération
      */
-    private function verifyRecoveryCode(User $user, string $code)  // 🆕 TYPE HINTS EXPLICITES
+    private function verifyRecoveryCode(User $user, string $code)
     {
         if (empty($user->two_factor_recovery_codes)) {
             return response()->json([
@@ -356,9 +404,8 @@ class TwoFactorController extends Controller
             return $recoveryCode === $code;
         });
 
-        // 🆕 MÉTHODE ALTERNATIVE
         $user->two_factor_recovery_codes = encrypt($remainingCodes->toJson());
-        $user->save();  // 🆕 UTILISER save() au lieu de update()
+        $user->save();
 
         Log::info("Recovery code used for user: {$user->email}");
 

@@ -29,26 +29,33 @@ class JWTService
     }
 
     /**
-     * Génère un token JWT pour un utilisateur
+     * 🔧 CORRIGÉ : Génère un token JWT pour un utilisateur
      */
-    public function generateToken(User $user): array
+    public function generateToken(User $user, array $extraClaims = []): array
     {
+        // 🔧 CORRECTION CRITIQUE : Créer les timestamps de façon immutable
         $now = Carbon::now();
+        $issuedAt = $now->timestamp;
+        $notBefore = $now->timestamp;
+        $expiresAt = $now->copy()->addSeconds($this->ttl)->timestamp; // 🔧 UTILISER copy()
+        
         $jti = $this->generateJti();
         
         Log::info('🔧 Generating JWT Token', [
             'user_id' => $user->id,
             'jti' => $jti,
-            'ttl' => $this->ttl
+            'ttl' => $this->ttl,
+            'issued_at' => date('Y-m-d H:i:s', $issuedAt),
+            'expires_at' => date('Y-m-d H:i:s', $expiresAt)
         ]);
         
         // Payload principal (Access Token)
         $payload = [
             'iss' => config('app.name', '3713'),
             'aud' => '3713-users',
-            'iat' => $now->timestamp,
-            'nbf' => $now->timestamp,
-            'exp' => $now->addSeconds($this->ttl)->timestamp,
+            'iat' => $issuedAt,     // 🔧 CORRECTION : Utiliser timestamp fixe
+            'nbf' => $notBefore,    // 🔧 CORRECTION : Utiliser timestamp fixe
+            'exp' => $expiresAt,    // 🔧 CORRECTION : Utiliser timestamp calculé avec copy()
             'sub' => $user->id,
             'jti' => $jti,
             
@@ -61,11 +68,11 @@ class JWTService
             ],
             
             // Contexte sécurité
-            'security' => [
+            'security' => array_merge([
                 'two_factor_verified' => false,
                 'last_login' => $now->toISOString(),
                 'scan_permissions' => $this->getUserScanPermissions($user),
-            ],
+            ], $extraClaims),
             
             // Quotas et limites
             'quotas' => [
@@ -75,13 +82,15 @@ class JWTService
             ]
         ];
 
-        // 🔧 CORRECTION : Refresh Token avec timestamp corrigé
-        $refreshExpiry = Carbon::now()->addSeconds($this->refreshTtl);
+        // 🔧 CORRECTION : Refresh Token avec timestamps séparés et corrects
+        $refreshNow = Carbon::now(); // 🔧 NOUVEAU : Instance séparée pour refresh
+        $refreshExpiresAt = $refreshNow->copy()->addSeconds($this->refreshTtl)->timestamp;
+        
         $refreshPayload = [
             'iss' => config('app.name', '3713'),
             'aud' => '3713-refresh',
-            'iat' => $now->timestamp,
-            'exp' => $refreshExpiry->timestamp, // ✅ Utiliser timestamp correct
+            'iat' => $refreshNow->timestamp,
+            'exp' => $refreshExpiresAt,
             'sub' => $user->id,
             'jti' => $jti . '_refresh',
             'type' => 'refresh'
@@ -90,14 +99,14 @@ class JWTService
         $accessToken = JWT::encode($payload, $this->secret, $this->algo);
         $refreshToken = JWT::encode($refreshPayload, $this->secret, $this->algo);
 
-        // 🔧 CORRECTION : Stocker les tokens dans le cache avec TTL correct
+        // Stocker les tokens dans le cache avec TTL correct
         $this->storeTokenId($jti, $user->id, $this->ttl);
         $this->storeTokenId($jti . '_refresh', $user->id, $this->refreshTtl);
 
         Log::info('✅ JWT Tokens generated successfully', [
             'user_id' => $user->id,
-            'access_expires_at' => date('Y-m-d H:i:s', $payload['exp']),
-            'refresh_expires_at' => date('Y-m-d H:i:s', $refreshPayload['exp'])
+            'access_expires_at' => date('Y-m-d H:i:s', $expiresAt),
+            'refresh_expires_at' => date('Y-m-d H:i:s', $refreshExpiresAt)
         ]);
 
         return [
@@ -110,7 +119,7 @@ class JWTService
     }
 
     /**
-     * 🔧 CORRECTION : Valide et décode un token JWT avec logs détaillés
+     * 🔧 CORRIGÉ : Valide et décode un token JWT avec logs détaillés
      */
     public function validateToken(string $token): ?object
     {
@@ -121,6 +130,8 @@ class JWTService
                 'jti' => $decoded->jti ?? 'missing',
                 'sub' => $decoded->sub ?? 'missing',
                 'exp' => isset($decoded->exp) ? date('Y-m-d H:i:s', $decoded->exp) : 'missing',
+                'iat' => isset($decoded->iat) ? date('Y-m-d H:i:s', $decoded->iat) : 'missing', // 🔧 AJOUTÉ pour debug
+                'current_time' => date('Y-m-d H:i:s'), // 🔧 AJOUTÉ pour debug
                 'is_blacklisted' => $this->isTokenBlacklisted($decoded->jti ?? '')
             ]);
             
@@ -139,18 +150,24 @@ class JWTService
             Log::warning('JWT Invalid signature', ['error' => $e->getMessage()]);
             return null;
         } catch (\Exception $e) {
-            Log::error('JWT Validation error', ['error' => $e->getMessage()]);
+            Log::error('JWT Validation error', [
+                'error' => $e->getMessage(),
+                'error_type' => get_class($e) // 🔧 AJOUTÉ pour débugger
+            ]);
             return null;
         }
     }
 
     /**
-     * 🔧 CORRECTION : Renouvelle un token avec le refresh token
+     * 🔧 CORRIGÉ : Renouvelle un token avec le refresh token
      */
     public function refreshToken(string $refreshToken): ?array
     {
         try {
             Log::info('🔧 Attempting token refresh');
+            
+            // 🔧 CORRECTION : Validation temporelle explicite
+            $currentTimestamp = Carbon::now()->timestamp;
             
             $decoded = JWT::decode($refreshToken, new Key($this->secret, $this->algo));
             
@@ -158,12 +175,24 @@ class JWTService
                 'type' => $decoded->type ?? 'missing',
                 'sub' => $decoded->sub ?? 'missing',
                 'jti' => $decoded->jti ?? 'missing',
-                'exp' => isset($decoded->exp) ? date('Y-m-d H:i:s', $decoded->exp) : 'missing'
+                'exp' => isset($decoded->exp) ? date('Y-m-d H:i:s', $decoded->exp) : 'missing',
+                'iat' => isset($decoded->iat) ? date('Y-m-d H:i:s', $decoded->iat) : 'missing', // 🔧 AJOUTÉ
+                'current_time' => date('Y-m-d H:i:s', $currentTimestamp) // 🔧 AJOUTÉ
             ]);
             
             // Vérifier que c'est bien un refresh token
             if (!isset($decoded->type) || $decoded->type !== 'refresh') {
                 Log::warning('Not a refresh token', ['type' => $decoded->type ?? 'missing']);
+                return null;
+            }
+
+            // 🔧 CORRECTION : Vérification d'expiration manuelle pour debug
+            if (isset($decoded->exp) && $currentTimestamp > $decoded->exp) {
+                Log::warning('Refresh token expired manually checked', [
+                    'current' => $currentTimestamp,
+                    'expires' => $decoded->exp,
+                    'diff_seconds' => $currentTimestamp - $decoded->exp
+                ]);
                 return null;
             }
 
@@ -186,6 +215,9 @@ class JWTService
                 Log::info('Old refresh token blacklisted', ['jti' => $decoded->jti]);
             }
 
+            // 🔧 CORRECTION : Attendre 1 seconde pour éviter les problèmes de timing
+            sleep(1);
+
             // Générer nouveaux tokens
             $newTokens = $this->generateToken($user);
             
@@ -194,16 +226,23 @@ class JWTService
             return $newTokens;
             
         } catch (\Firebase\JWT\ExpiredException $e) {
-            Log::info('Refresh token expired', ['error' => $e->getMessage()]);
+            Log::info('Refresh token expired', [
+                'error' => $e->getMessage(),
+                'current_time' => date('Y-m-d H:i:s')
+            ]);
             return null;
         } catch (\Exception $e) {
-            Log::error('Token refresh error', ['error' => $e->getMessage()]);
+            Log::error('Token refresh error', [
+                'error' => $e->getMessage(),
+                'error_type' => get_class($e), // 🔧 AJOUTÉ
+                'current_time' => date('Y-m-d H:i:s')
+            ]);
             return null;
         }
     }
 
     /**
-     * 🔧 CORRECTION : Révoque un token (logout) avec logs
+     * 🔧 CORRIGÉ : Révoque un token (logout) avec logs
      */
     public function revokeToken(string $token): bool
     {
@@ -272,7 +311,7 @@ class JWTService
     }
 
     /**
-     * 🔧 CORRECTION : Détermine les permissions de scan pour un utilisateur
+     * Détermine les permissions de scan pour un utilisateur
      */
     private function getUserScanPermissions(User $user): array
     {
@@ -298,38 +337,19 @@ class JWTService
     }
 
     /**
-     * Met à jour les claims de sécurité après 2FA
+     * 🔧 NOUVELLE MÉTHODE : Debugging des timestamps
      */
-    public function markTwoFactorVerified(string $token): ?string
+    public function debugTimestamps(): array
     {
-        try {
-            $decoded = JWT::decode($token, new Key($this->secret, $this->algo));
-            
-            // Créer nouveau payload avec 2FA vérifié
-            $payload = (array) $decoded;
-            $payload['security']['two_factor_verified'] = true;
-            $payload['security']['two_factor_verified_at'] = Carbon::now()->toISOString();
-            
-            // Étendre légèrement l'expiration après 2FA réussi
-            $payload['exp'] = Carbon::now()->addSeconds($this->ttl + 1800)->timestamp; // +30min
-            
-            // Blacklister l'ancien token
-            if (isset($decoded->jti)) {
-                $this->blacklistToken($decoded->jti);
-            }
-            
-            // Générer nouveau JTI
-            $payload['jti'] = $this->generateJti();
-            
-            // Stocker le nouveau token
-            $this->storeTokenId($payload['jti'], $decoded->sub, $this->ttl + 1800);
-            
-            return JWT::encode($payload, $this->secret, $this->algo);
-            
-        } catch (\Exception $e) {
-            Log::error('2FA token update error', ['error' => $e->getMessage()]);
-            return null;
-        }
+        $now = Carbon::now();
+        
+        return [
+            'current_time' => $now->toISOString(),
+            'current_timestamp' => $now->timestamp,
+            'ttl' => $this->ttl,
+            'refresh_ttl' => $this->refreshTtl,
+            'future_time' => $now->copy()->addSeconds($this->ttl)->toISOString(),
+            'future_timestamp' => $now->copy()->addSeconds($this->ttl)->timestamp
+        ];
     }
-    
 }

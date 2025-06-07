@@ -189,7 +189,7 @@ class ScanWebsite implements ShouldQueue
     }
 
     /**
-     * 🔥 MÉTHODE CORRIGÉE: Exécution sécurisée des commandes
+     * 🔥 MÉTHODE CORRIGÉE: Exécution sécurisée des commandes (VERSION SÉCURISÉE)
      */
     private function runSecureCommand($tool, $args = [], $target = null, $timeout = 60)
     {
@@ -214,22 +214,10 @@ class ScanWebsite implements ShouldQueue
         // Étape 3: Construction sécurisée de la commande
         $command = [$toolPath];
         
-        //Validation spécifique par outil
+        // 🔒 SÉCURITÉ: Validation des arguments contre l'injection
         foreach ($args as $arg) {
-            if ($tool === 'nuclei') {
-                if (!preg_match('/^[a-zA-Z0-9._\/-]+$/', $arg) && 
-                    !in_array($arg, ['-jsonl', '-silent', '-no-color', '-u', '-t'])) {
-                    throw new \InvalidArgumentException("Argument Nuclei non sécurisé: $arg");
-                }
-            } elseif ($tool === 'sslyze') {
-                if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
-                    throw new \InvalidArgumentException("Argument SSLyze non sécurisé: $arg");
-                }
-            } else {
-                //whatweb
-                if (!preg_match('/^[a-zA-Z0-9._-]+$/', $arg)) {
-                    throw new \InvalidArgumentException("Argument non sécurisé: $arg");
-                }
+            if (!$this->isArgumentSafe($arg)) {
+                throw new \InvalidArgumentException("Argument non sécurisé: $arg");
             }
             $command[] = $arg;
         }
@@ -238,12 +226,42 @@ class ScanWebsite implements ShouldQueue
             $command[] = escapeshellarg($target);
         }
         
-        // Étape 4: Exécution avec proc_open 
+        // Étape 4: Exécution avec proc_open sécurisé
         return $this->executeCommandSecurely($command, $timeout);
     }
 
     /**
-     * NOUVELLE MÉTHODE: Exécution système sécurisée
+     * 🔒 SÉCURITÉ: Validation des arguments contre l'injection de commandes
+     */
+    private function isArgumentSafe($arg)
+    {
+        // Caractères dangereux pour l'injection de commandes
+        $dangerousChars = ['`', '$', '|', '&', ';', '>', '<'];
+        
+        foreach ($dangerousChars as $char) {
+            if (strpos($arg, $char) !== false) {
+                return false;
+            }
+        }
+
+        // Patterns d'injection de commandes
+        $dangerousPatterns = [
+            '/\$\(.*\)/',     // $(command)
+            '/`.*`/',         // `command`
+            '/;\s*\w/',       // ; command
+        ];
+
+        foreach ($dangerousPatterns as $pattern) {
+            if (preg_match($pattern, $arg)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 🔒 NOUVELLE MÉTHODE: Exécution système sécurisée avec proc_open
      */
     private function executeCommandSecurely($command, $timeout = 60)
     {
@@ -258,21 +276,18 @@ class ScanWebsite implements ShouldQueue
             2 => ['pipe', 'w'],  // stderr
         ];
         
-        // Environnement sécurisé et minimal
+        // 🔒 Environnement sécurisé et minimal
         $env = [
             'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/whatweb:/opt/venv/bin',
             'HOME' => '/tmp',
             'USER' => 'www-data',
             'SHELL' => '/bin/bash',
-            // Suppression des variables d'environnement sensibles
             'LANG' => 'C',
             'LC_ALL' => 'C'
         ];
         
-        // Conversion du tableau de commande en string pour proc_open
-        $commandString = implode(' ', $command);
-        
-        $process = proc_open($commandString, $descriptorspec, $pipes, null, $env);
+        // 🔒 CRITIQUE: proc_open avec tableau sécurisé (pas de string)
+        $process = proc_open($command, $descriptorspec, $pipes, null, $env);
         
         if (!is_resource($process)) {
             throw new \RuntimeException('Impossible de démarrer la commande sécurisée');
@@ -676,35 +691,24 @@ class ScanWebsite implements ShouldQueue
      * Validation sécurisée des variables d'environnement
      */
     private function getSecureEnvValue($key, $default)
-{
-    $value = env($key, $default);
-    
-    // 🔧 CORRECTION: Log pour debug
-    Log::info("Getting env value", [
-        'key' => $key,
-        'has_value' => !empty($value),
-        'value_length' => strlen($value ?? ''),
-        'scan_id' => $this->scan_id
-    ]);
-    
-    // 🔧 CORRECTION: Validation moins restrictive
-    if (empty($value)) {
-        Log::warning("Environment variable is empty", ['key' => $key, 'scan_id' => $this->scan_id]);
-        return $default;
+    {
+        $value = env($key, $default);
+        
+        if (empty($value)) {
+            return $default;
+        }
+        
+        // Validation basique contre l'injection
+        if (strlen($value) > 1000 || preg_match('/[`$;|&><]/', $value)) {
+            Log::warning("Environment variable potentially dangerous", [
+                'key' => $key,
+                'scan_id' => $this->scan_id
+            ]);
+            return $default;
+        }
+        
+        return $value;
     }
-    
-    // 🔧 CORRECTION: Seulement vérifier la longueur extrême et caractères dangereux
-    if (strlen($value) > 500 || preg_match('/[<>&"|;`$()]/', $value)) {
-        Log::warning("Environment variable potentially dangerous", [
-            'key' => $key, 
-            'length' => strlen($value),
-            'scan_id' => $this->scan_id
-        ]);
-        return $default;
-    }
-    
-    return $value;
-}
 
     /**
      * Validation du host ZAP
@@ -751,123 +755,64 @@ class ScanWebsite implements ShouldQueue
     /**
      * Création contexte ZAP sécurisé
      */
-   private function createZapContextSecurely($apiHost, $apiKey, $contextName, $scheme, $domain)
-{
-    Log::info("🔧 ZAP Context Creation Start", [
-        'api_host' => $apiHost,
-        'context_name' => $contextName,
-        'scheme' => $scheme,
-        'domain' => $domain,
-        'scan_id' => $this->scan_id
-    ]);
-    
-    try {
-        // ÉTAPE 1: Créer le contexte
-        $createContextUrl = "{$apiHost}/JSON/context/action/newContext/?apikey=" . urlencode($apiKey) . 
-                           "&contextName=" . urlencode($contextName);
-        
-        Log::info("🔧 ZAP Context URL", [
-            'url' => $createContextUrl,
-            'scan_id' => $this->scan_id
-        ]);
-        
-        $contextResponse = Http::timeout(10)->get($createContextUrl);
-        
-        Log::info("🔧 ZAP Context Raw Response", [
-            'status_code' => $contextResponse->status(),
-            'headers' => $contextResponse->headers(),
-            'body' => $contextResponse->body(),
-            'successful' => $contextResponse->successful(),
-            'scan_id' => $this->scan_id
-        ]);
-        
-        // ✅ CORRECTION 1: Vérifier le statut ET le contenu
-        if (!$contextResponse->successful()) {
-            throw new \Exception("Échec création contexte ZAP - Status: {$contextResponse->status()} - Response: " . $contextResponse->body());
-        }
-        
-        // ✅ CORRECTION 2: Parser la réponse JSON avec gestion d'erreur
-        $responseBody = $contextResponse->body();
-        if (empty($responseBody)) {
-            throw new \Exception("Réponse ZAP vide pour la création du contexte");
-        }
-        
-        $contextData = json_decode($responseBody, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception("Erreur JSON ZAP: " . json_last_error_msg() . " - Body: " . $responseBody);
-        }
-        
-        Log::info("🔧 ZAP Context Parsed Data", [
-            'context_data' => $contextData,
-            'json_error' => json_last_error_msg(),
-            'scan_id' => $this->scan_id
-        ]);
-        
-        // ✅ CORRECTION 3: Vérifier la structure de la réponse ZAP
-        if (!is_array($contextData)) {
-            throw new \Exception("Format de réponse ZAP inattendu (pas un array): " . gettype($contextData));
-        }
-        
-        $contextId = $contextData['contextId'] ?? null;
-        if (!$contextId) {
-            throw new \Exception("ID contexte manquant dans la réponse ZAP. Data reçue: " . json_encode($contextData));
-        }
-        
-        Log::info("🔧 ZAP Context Created Successfully", [
-            'context_id' => $contextId,
-            'scan_id' => $this->scan_id
-        ]);
-        
-        // ÉTAPE 2: Configurer l'inclusion dans le contexte
-        $regex = $scheme . '://' . preg_quote($domain, '/') . '.*';
-        $includeUrl = "{$apiHost}/JSON/context/action/includeInContext/?apikey=" . urlencode($apiKey) . 
-                     "&contextName=" . urlencode($contextName) . "&regex=" . urlencode($regex);
-        
-        Log::info("🔧 ZAP Include Context", [
-            'include_url' => $includeUrl,
-            'regex' => $regex,
-            'scan_id' => $this->scan_id
-        ]);
-        
-        $includeResponse = Http::timeout(5)->get($includeUrl);
-        
-        Log::info("🔧 ZAP Include Response", [
-            'status_code' => $includeResponse->status(),
-            'body' => $includeResponse->body(),
-            'successful' => $includeResponse->successful(),
-            'scan_id' => $this->scan_id
-        ]);
-        
-        // ✅ CORRECTION 4: Vérifier que l'inclusion a fonctionné
-        if (!$includeResponse->successful()) {
-            Log::warning("🔧 ZAP Include failed but continuing", [
-                'status' => $includeResponse->status(),
-                'response' => $includeResponse->body(),
+    private function createZapContextSecurely($apiHost, $apiKey, $contextName, $scheme, $domain)
+    {
+        try {
+            // ÉTAPE 1: Créer le contexte
+            $createContextUrl = "{$apiHost}/JSON/context/action/newContext/?apikey=" . urlencode($apiKey) . 
+                               "&contextName=" . urlencode($contextName);
+            
+            $contextResponse = Http::timeout(10)->get($createContextUrl);
+            
+            if (!$contextResponse->successful()) {
+                throw new \Exception("Échec création contexte ZAP - Status: {$contextResponse->status()}");
+            }
+            
+            $responseBody = $contextResponse->body();
+            if (empty($responseBody)) {
+                throw new \Exception("Réponse ZAP vide pour la création du contexte");
+            }
+            
+            $contextData = json_decode($responseBody, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception("Erreur JSON ZAP: " . json_last_error_msg());
+            }
+            
+            if (!is_array($contextData)) {
+                throw new \Exception("Format de réponse ZAP inattendu");
+            }
+            
+            $contextId = $contextData['contextId'] ?? null;
+            if (!$contextId) {
+                throw new \Exception("ID contexte manquant dans la réponse ZAP");
+            }
+            
+            // ÉTAPE 2: Configurer l'inclusion dans le contexte
+            $regex = $scheme . '://' . preg_quote($domain, '/') . '.*';
+            $includeUrl = "{$apiHost}/JSON/context/action/includeInContext/?apikey=" . urlencode($apiKey) . 
+                         "&contextName=" . urlencode($contextName) . "&regex=" . urlencode($regex);
+            
+            $includeResponse = Http::timeout(5)->get($includeUrl);
+            
+            if (!$includeResponse->successful()) {
+                Log::warning("ZAP Include failed but continuing", [
+                    'status' => $includeResponse->status(),
+                    'scan_id' => $this->scan_id
+                ]);
+            }
+            
+            return $contextId;
+            
+        } catch (\Exception $e) {
+            Log::error("ZAP Context Creation FAILED", [
+                'error' => $e->getMessage(),
                 'scan_id' => $this->scan_id
             ]);
-            // Ne pas faire échouer pour ça, c'est pas critique
+            
+            throw new \Exception("Échec création contexte ZAP: " . $e->getMessage());
         }
-        
-        Log::info("🔧 ZAP Context Configuration Complete", [
-            'context_id' => $contextId,
-            'scan_id' => $this->scan_id
-        ]);
-        
-        return $contextId;
-        
-    } catch (\Exception $e) {
-        Log::error("🔧 ZAP Context Creation FAILED", [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'api_host' => $apiHost,
-            'context_name' => $contextName,
-            'scan_id' => $this->scan_id
-        ]);
-        
-        // Re-throw avec plus de contexte
-        throw new \Exception("Échec création contexte ZAP: " . $e->getMessage());
     }
-}
+
     /**
      * Spider ZAP sécurisé
      */
@@ -956,11 +901,6 @@ class ScanWebsite implements ShouldQueue
                 
                 if ($statusResponse->successful()) {
                     $progress = (int)($statusResponse->json()['status'] ?? 0);
-                    Log::debug("Process ZAP sécurisé", [
-                        'type' => $processType,
-                        'progress' => $progress,
-                        'scan_id' => $this->scan_id
-                    ]);
                 }
             } catch (\Exception $e) {
                 Log::warning("Erreur statut ZAP sécurisé", [
@@ -1038,6 +978,8 @@ EOT;
         
         return $promptContent;
     }
+
+    // LES MÉTHODES D'EXTRACTION RESTENT IDENTIQUES À LA VERSION ORIGINALE
 
     /**
      * Extrait les informations pertinentes des données Nuclei
@@ -1444,115 +1386,68 @@ EOT;
     /**
      * Appel sécurisé à l'API Gemini
      */
-   private function callGeminiAPI($prompt)
-{
-    // 🔧 CORRECTION: Essayer plusieurs méthodes pour récupérer la clé
-    $apiKey = null;
-    
-    // Méthode 1: getSecureEnvValue
-    $apiKey = $this->getSecureEnvValue('GEMINI_API_KEY', '');
-    
-    // Méthode 2: Fallback direct avec env()
-    if (empty($apiKey)) {
-        $apiKey = env('GEMINI_API_KEY', '');
-        Log::info("Fallback to direct env()", [
-            'has_key' => !empty($apiKey),
-            'scan_id' => $this->scan_id
-        ]);
-    }
-    
-    // Méthode 3: Fallback avec config()
-    if (empty($apiKey)) {
-        $apiKey = config('services.gemini.api_key', '');
-        Log::info("Fallback to config()", [
-            'has_key' => !empty($apiKey),
-            'scan_id' => $this->scan_id
-        ]);
-    }
-    
-    if (empty($apiKey)) {
-        Log::error('Gemini API key not found with any method', [
-            'scan_id' => $this->scan_id,
-            'env_gemini_set' => !empty(env('GEMINI_API_KEY')),
-            'config_gemini_set' => !empty(config('services.gemini.api_key'))
-        ]);
-        return "Automatic analysis could not be generated: API key not configured properly.";
-    }
-    
-    // 🔧 CORRECTION: URL avec fallback aussi
-    $apiUrl = $this->getSecureEnvValue(
-        'GEMINI_API_URL', 
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-    );
-    
-    try {
-        Log::info("Calling Gemini API", [
-            'scan_id' => $this->scan_id,
-            'api_url_length' => strlen($apiUrl),
-            'api_key_length' => strlen($apiKey)
-        ]);
+    private function callGeminiAPI($prompt)
+    {
+        // Validation sécurisée des clés API
+        $apiKey = $this->getSecureEnvValue('GEMINI_API_KEY', '');
+        $apiUrl = $this->getSecureEnvValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
         
-        // Construction sécurisée du corps de requête
-        $requestBody = [
-            'contents' => [
-                [
-                    'parts' => [
-                        ['text' => $prompt]
+        if (empty($apiKey)) {
+            Log::warning('Gemini API key not configured (secure mode)', ['scan_id' => $this->scan_id]);
+            return "Automatic analysis could not be generated because the API key is not configured in secure mode.";
+        }
+        
+        try {
+            // Construction sécurisée du corps de requête
+            $requestBody = [
+                'contents' => [
+                    [
+                        'parts' => [
+                            ['text' => $prompt]
+                        ]
+                    ]
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.2,
+                    'maxOutputTokens' => 1800
+                ],
+                'safetySettings' => [
+                    [
+                        'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
+                        'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
                     ]
                 ]
-            ],
-            'generationConfig' => [
-                'temperature' => 0.2,
-                'maxOutputTokens' => 1800
-            ],
-            'safetySettings' => [
-                [
-                    'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
-                    'threshold' => 'BLOCK_MEDIUM_AND_ABOVE'
-                ]
-            ]
-        ];
-        
-        // 🔧 CORRECTION: Timeout et retry améliorés
-        $response = Http::timeout(45) // Augmenté de 30 à 45 secondes
-            ->retry(3, 2000) // 3 tentatives avec 2s entre chaque
-            ->withHeaders([
+            ];
+            
+            // Appel API sécurisé
+            $response = Http::timeout(30)->retry(3, 1000)->withHeaders([
                 'Content-Type' => 'application/json',
                 'User-Agent' => '3713-Security-Scanner/1.0'
-            ])
-            ->post($apiUrl . '?key=' . urlencode($apiKey), $requestBody);
-        
-        if ($response->successful()) {
-            $data = $response->json();
+            ])->post($apiUrl . '?key=' . urlencode($apiKey), $requestBody);
             
-            if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-                Log::info("Gemini analysis generated successfully", [
-                    'scan_id' => $this->scan_id,
-                    'response_length' => strlen($data['candidates'][0]['content']['parts'][0]['text'])
-                ]);
-                return $data['candidates'][0]['content']['parts'][0]['text'];
+            if ($response->successful()) {
+                $data = $response->json();
+                
+                if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                    Log::info("Gemini analysis generated successfully (secure mode)", ['scan_id' => $this->scan_id]);
+                    return $data['candidates'][0]['content']['parts'][0]['text'];
+                } else {
+                    Log::warning('Unexpected Gemini API response structure (secure mode)', ['scan_id' => $this->scan_id]);
+                    return "Automatic analysis could not be generated (unexpected response format in secure mode).";
+                }
             } else {
-                Log::warning('Unexpected Gemini API response structure', [
-                    'scan_id' => $this->scan_id,
-                    'response_keys' => array_keys($data)
+                Log::error('Gemini API error (secure mode)', [
+                    'status' => $response->status(),
+                    'scan_id' => $this->scan_id
                 ]);
-                return "Automatic analysis could not be generated: Unexpected API response format.";
+                return "Automatic analysis could not be generated due to an external API error in secure mode.";
             }
-        } else {
-            Log::error('Gemini API HTTP error', [
-                'status' => $response->status(),
-                'response' => $response->body(),
+        } catch (\Exception $e) {
+            Log::error("Exception when calling Gemini API (secure mode)", [
+                'error' => $e->getMessage(),
                 'scan_id' => $this->scan_id
             ]);
-            return "Automatic analysis could not be generated: API request failed (HTTP {$response->status()}).";
+            return "Automatic analysis could not be generated due to an error in secure mode: " . $e->getMessage();
         }
-    } catch (\Exception $e) {
-        Log::error("Exception when calling Gemini API", [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'scan_id' => $this->scan_id
-        ]);
-        return "Automatic analysis could not be generated: " . $e->getMessage();
     }
-}
 }

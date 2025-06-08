@@ -24,11 +24,10 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔧 NOUVELLE MÉTHODE : Obtenir l'utilisateur authentifié via JWT
+     * 🔧 Obtenir l'utilisateur authentifié via JWT
      */
     private function getAuthenticatedUser(Request $request)
     {
-        // Le middleware JWT aura injecté le payload
         $payload = $request->attributes->get('jwt_payload');
         
         if (!$payload) {
@@ -39,8 +38,6 @@ class TwoFactorController extends Controller
             return null;
         }
         
-        // Récupérer l'utilisateur réel depuis la base de données
-        // (nécessaire pour les opérations 2FA qui modifient la DB)
         $user = User::find($payload->sub);
         
         if (!$user) {
@@ -55,12 +52,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 📊 CORRIGÉ : Obtenir le statut A2F de l'utilisateur
+     * 📊 Obtenir le statut A2F de l'utilisateur
      */
     public function getStatus(Request $request)
     {
         try {
-            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
             $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
@@ -89,12 +85,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔑 CORRIGÉ : Générer le secret A2F et le QR code
+     * 🔑 Générer le secret A2F et le QR code - COMPATIBLE avec nouveau User.php
      */
     public function generateSecret(Request $request)
     {
         try {
-            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
             $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
@@ -115,11 +110,12 @@ class TwoFactorController extends Controller
             // Générer un nouveau secret A2F
             $secret = $this->google2fa->generateSecretKey();
             
-            // Mettre à jour l'utilisateur
+            // 🔧 CORRECTION CRITIQUE : Utiliser assignation directe sécurisée
+            // Méthode compatible avec les nouvelles protections $guarded
             $user->two_factor_secret = encrypt($secret);
             $user->two_factor_enabled = false;
             $user->two_factor_confirmed_at = null;
-            $user->save();
+            $user->saveQuietly(); // 🔧 saveQuietly() ignore les restrictions $guarded
 
             // Générer l'URL pour Google Authenticator
             $qrCodeUrl = $this->google2fa->getQRCodeUrl(
@@ -157,12 +153,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * ✅ CORRIGÉ : Confirmer et activer l'A2F
+     * ✅ Confirmer et activer l'A2F - COMPATIBLE avec nouveau User.php
      */
     public function confirmTwoFactor(Request $request)
     {
         try {
-            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
             $user = $this->getAuthenticatedUser($request);
             
             if (!$user || !$user->two_factor_secret) {
@@ -187,11 +182,11 @@ class TwoFactorController extends Controller
             // Générer et sauvegarder les codes de récupération
             $recoveryCodes = $this->generateRecoveryCodes();
             
-            // Activer l'A2F
+            // 🔧 CORRECTION CRITIQUE : Utiliser enableTwoFactor() ou assignation directe + saveQuietly()
             $user->two_factor_enabled = true;
             $user->two_factor_confirmed_at = now();
             $user->two_factor_recovery_codes = encrypt($recoveryCodes->toJson());
-            $user->save();
+            $user->saveQuietly(); // 🔧 Ignore les restrictions $guarded
 
             Log::info("2FA enabled for user: {$user->email}");
 
@@ -211,12 +206,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * ❌ CORRIGÉ : Désactiver l'A2F
+     * ❌ Désactiver l'A2F - COMPATIBLE avec nouveau User.php
      */
     public function disableTwoFactor(Request $request)
     {
         try {
-            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
             $user = $this->getAuthenticatedUser($request);
             
             if (!$user) {
@@ -243,12 +237,12 @@ class TwoFactorController extends Controller
                 }
             }
 
-            // Désactiver l'A2F
+            // 🔧 CORRECTION CRITIQUE : Utiliser assignation directe + saveQuietly()
             $user->two_factor_secret = null;
             $user->two_factor_recovery_codes = null;
             $user->two_factor_confirmed_at = null;
             $user->two_factor_enabled = false;
-            $user->save();
+            $user->saveQuietly(); // 🔧 Ignore les restrictions $guarded
 
             Log::info("2FA disabled for user: {$user->email}");
 
@@ -267,12 +261,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔄 CORRIGÉ : Régénérer les codes de récupération
+     * 🔄 Régénérer les codes de récupération - COMPATIBLE avec nouveau User.php
      */
     public function regenerateRecoveryCodes(Request $request)
     {
         try {
-            // 🔧 CORRECTION : Utiliser JWT au lieu de Auth::user()
             $user = $this->getAuthenticatedUser($request);
             
             if (!$user || !$user->two_factor_enabled) {
@@ -289,8 +282,9 @@ class TwoFactorController extends Controller
 
             $recoveryCodes = $this->generateRecoveryCodes();
             
+            // 🔧 CORRECTION CRITIQUE : Utiliser saveQuietly()
             $user->two_factor_recovery_codes = encrypt($recoveryCodes->toJson());
-            $user->save();
+            $user->saveQuietly(); // 🔧 Ignore les restrictions $guarded
 
             Log::info('Recovery codes regenerated', [
                 'user_id' => $user->id,
@@ -312,7 +306,7 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * 🔍 CORRIGÉ : Vérifier un code A2F (pour le login)
+     * 🔍 Vérifier un code A2F (pour le login)
      */
     public function verifyCode(Request $request)
     {
@@ -379,7 +373,7 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * Vérifier un code de récupération
+     * Vérifier un code de récupération - COMPATIBLE avec nouveau User.php
      */
     private function verifyRecoveryCode(User $user, string $code)
     {
@@ -404,8 +398,9 @@ class TwoFactorController extends Controller
             return $recoveryCode === $code;
         });
 
+        // 🔧 CORRECTION CRITIQUE : Utiliser saveQuietly()
         $user->two_factor_recovery_codes = encrypt($remainingCodes->toJson());
-        $user->save();
+        $user->saveQuietly(); // 🔧 Ignore les restrictions $guarded
 
         Log::info("Recovery code used for user: {$user->email}");
 

@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use PragmaRX\Google2FA\Google2FA;
 
 class AuthController extends Controller
@@ -21,36 +22,61 @@ class AuthController extends Controller
     }
 
     /**
-     * 📝 REGISTRATION - Simplifié
+     * 🔒 REGISTRATION SÉCURISÉ mais COMPATIBLE
      */
     public function register(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-        ]);
-    
+        // 🔧 Rate limiting modéré (pas trop strict)
+        $rateLimitKey = 'register:' . $request->ip();
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) { // 5 tentatives/heure au lieu de 3
+            $seconds = RateLimiter::availableIn($rateLimitKey);
+            return response()->json([
+                'message' => 'Too many registration attempts',
+                'retry_after_seconds' => $seconds
+            ], 429);
+        }
+
+        // 🔧 Validation MOINS STRICTE pour compatibilité
+        $validator = $this->getCompatibleRegistrationValidator($request->all());
+        
         if ($validator->fails()) {
+            RateLimiter::hit($rateLimitKey, 3600);
+            
             return response()->json([
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
-    
+
+        // 🔧 Sanitisation légère (pas trop agressive)
+        $secureData = $this->lightSanitizeUserInput($validator->validated());
+        
+        // Vérification unicité email
+        if (User::where('email', $secureData['email'])->exists()) {
+            RateLimiter::hit($rateLimitKey, 3600);
+            
+            return response()->json([
+                'message' => 'Email already registered',
+                'error' => 'This email is already in use'
+            ], 409);
+        }
+
         try {
-            $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'password' => Hash::make($request->password),
-            ]);
-    
-            // Générer JWT
+            // 🔧 CORRECTION CRITIQUE : Création sécurisée avec nouveau User.php
+            $user = new User();
+            $user->name = $secureData['name'];
+            $user->email = $secureData['email'];
+            $user->password = Hash::make($secureData['password']);
+            $user->save(); // Utiliser save() normal car ces champs sont dans $fillable
+
+            // Génération JWT
             $tokenData = $this->jwtService->generateToken($user);
-    
+
+            // Logging sécurisé
             Log::info('User registered successfully', [
                 'user_id' => $user->id,
-                'email' => $user->email
+                'email_domain' => substr(strrchr($user->email, "@"), 1),
+                'ip' => $request->ip()
             ]);
 
             return response()->json([
@@ -61,44 +87,74 @@ class AuthController extends Controller
                 'token_type' => $tokenData['token_type'],
                 'expires_in' => $tokenData['expires_in'],
             ]);
+            
         } catch (\Exception $e) {
             Log::error('Registration error', [
                 'error' => $e->getMessage(),
-                'email' => $request->email
+                'ip' => $request->ip()
             ]);
             
             return response()->json([
-                'message' => 'An error occurred while creating the user.',
-                'error' => $e->getMessage(),
+                'message' => 'Registration failed',
+                'error' => 'Internal server error'
             ], 500);
         }
     }
 
     /**
-     * 🔐 LOGIN AVEC 2FA SIMPLIFIÉ - Tout en une seule méthode
+     * 🔒 LOGIN SÉCURISÉ mais COMPATIBLE avec 2FA
      */
     public function login(Request $request)
     {
-        Log::info('🔐 LOGIN ATTEMPT START', [
-            'email' => $request->email,
-            'has_2fa_code' => !empty($request->two_factor_code),
-            'ip' => $request->ip()
-        ]);
-
-        // Validation des entrées
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|string',
-            'two_factor_code' => 'nullable|string'
-        ]);
-    
-        // Recherche utilisateur
-        $user = User::where('email', $request->email)->first();
+        // Rate limiting modéré
+        $ipRateLimitKey = 'login-ip:' . $request->ip();
+        $emailRateLimitKey = 'login-email:' . hash('sha256', $request->input('email', ''));
         
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            Log::warning('🔐 INVALID CREDENTIALS', [
-                'email' => $request->email,
-                'user_exists' => !!$user
+        if (RateLimiter::tooManyAttempts($ipRateLimitKey, 15) || // 15 au lieu de 10
+            RateLimiter::tooManyAttempts($emailRateLimitKey, 8)) { // 8 au lieu de 5
+            
+            $seconds = max(
+                RateLimiter::availableIn($ipRateLimitKey),
+                RateLimiter::availableIn($emailRateLimitKey)
+            );
+            
+            Log::warning('Login rate limit exceeded', [
+                'ip' => $request->ip(),
+                'email_hash' => hash('sha256', $request->input('email', ''))
+            ]);
+            
+            return response()->json([
+                'message' => 'Too many login attempts',
+                'retry_after_seconds' => $seconds
+            ], 429);
+        }
+
+        // 🔧 Validation COMPATIBLE (moins stricte)
+        $validator = $this->getCompatibleLoginValidator($request->all());
+        
+        if ($validator->fails()) {
+            RateLimiter::hit($ipRateLimitKey, 3600);
+            RateLimiter::hit($emailRateLimitKey, 3600);
+            
+            return response()->json([
+                'message' => 'Invalid input format',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $secureData = $this->lightSanitizeUserInput($validator->validated());
+
+        // Recherche utilisateur
+        $user = User::where('email', $secureData['email'])->first();
+        
+        if (!$user || !Hash::check($secureData['password'], $user->password)) {
+            RateLimiter::hit($ipRateLimitKey, 3600);
+            RateLimiter::hit($emailRateLimitKey, 3600);
+            
+            Log::warning('Invalid login attempt', [
+                'ip' => $request->ip(),
+                'email_exists' => !!$user,
+                'email_hash' => hash('sha256', $secureData['email'])
             ]);
             
             return response()->json([
@@ -106,39 +162,28 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Vérifier le statut 2FA
+        // Gestion 2FA COMPATIBLE
         $has2FAEnabled = $user->hasTwoFactorEnabled();
         
-        Log::info('🔐 2FA CHECK', [
-            'user_id' => $user->id,
-            'has_2fa_enabled' => $has2FAEnabled,
-            'code_provided' => !empty($request->two_factor_code)
-        ]);
-
-        // Si 2FA activé
         if ($has2FAEnabled) {
-            // Si pas de code fourni, demander le code
-            if (!$request->two_factor_code) {
-                Log::info('🔐 2FA REQUIRED - NO CODE PROVIDED');
-                
+            if (!isset($secureData['two_factor_code'])) {
                 return response()->json([
                     'message' => '2FA code required',
                     'requires_2fa' => true,
                     'user_id' => $user->id,
-                    'email' => $user->email // Pour simplifier côté frontend
+                    'email' => $user->email
                 ], 200);
             }
             
-            // Vérifier le code 2FA
-            Log::info('🔐 VERIFYING 2FA CODE', [
-                'code_length' => strlen($request->two_factor_code)
-            ]);
-            
-            $twoFactorValid = $this->verify2FACode($user, $request->two_factor_code);
+            // Validation du code 2FA
+            $twoFactorValid = $this->verify2FACode($user, $secureData['two_factor_code']);
             
             if (!$twoFactorValid) {
-                Log::warning('🔐 INVALID 2FA CODE', [
-                    'user_id' => $user->id
+                RateLimiter::hit($emailRateLimitKey, 3600);
+                
+                Log::warning('Invalid 2FA code', [
+                    'user_id' => $user->id,
+                    'ip' => $request->ip()
                 ]);
                 
                 return response()->json([
@@ -148,19 +193,18 @@ class AuthController extends Controller
                     'email' => $user->email
                 ], 422);
             }
-            
-            Log::info('🔐 2FA CODE VALID');
         }
 
-        // ✅ CONNEXION RÉUSSIE - Générer les tokens
+        // Login réussi - génération token
         try {
             $tokenData = $this->jwtService->generateToken($user, [
-                'two_factor_verified' => $has2FAEnabled // Marquer si 2FA était requis et validé
+                'two_factor_verified' => $has2FAEnabled,
+                'login_method' => $has2FAEnabled ? '2fa' : 'password'
             ]);
             
-            Log::info('🔐 LOGIN SUCCESSFUL', [
+            Log::info('Login successful', [
                 'user_id' => $user->id,
-                'email' => $user->email,
+                'ip' => $request->ip(),
                 'two_factor_used' => $has2FAEnabled
             ]);
         
@@ -174,9 +218,10 @@ class AuthController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error('🔐 TOKEN GENERATION ERROR', [
+            Log::error('Token generation error', [
                 'error' => $e->getMessage(),
-                'user_id' => $user->id
+                'user_id' => $user->id,
+                'ip' => $request->ip()
             ]);
             
             return response()->json([
@@ -187,7 +232,95 @@ class AuthController extends Controller
     }
 
     /**
-     * 🔄 REFRESH TOKEN
+     * 🔧 VALIDATION COMPATIBLE POUR REGISTRATION (moins stricte)
+     */
+    private function getCompatibleRegistrationValidator(array $data)
+    {
+        return Validator::make($data, [
+            'name' => [
+                'required',
+                'string',
+                'min:2',
+                'max:50',
+                // 🔧 CORRECTION : Pattern moins strict pour compatibilité
+                'regex:/^[\p{L}\s\-\.\']{2,50}$/u'
+            ],
+            'email' => [
+                'required',
+                'string',
+                'email', // 🔧 CORRECTION : email simple au lieu de email:rfc,dns
+                'max:100',
+                'unique:users,email'
+            ],
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:255'
+                // 🔧 CORRECTION : Pas de regex strict pour compatibilité utilisateurs existants
+            ],
+            'password_confirmation' => [
+                'required',
+                'same:password'
+            ]
+        ], [
+            'name.regex' => 'Name can only contain letters, spaces, hyphens, dots, and apostrophes',
+            'email.email' => 'Please provide a valid email address'
+        ]);
+    }
+
+    /**
+     * 🔧 VALIDATION COMPATIBLE POUR LOGIN (moins stricte)
+     */
+    private function getCompatibleLoginValidator(array $data)
+    {
+        return Validator::make($data, [
+            'email' => [
+                'required',
+                'string',
+                'email', // 🔧 CORRECTION : email simple
+                'max:100'
+            ],
+            'password' => [
+                'required',
+                'string',
+                'min:1',
+                'max:255'
+            ],
+            'two_factor_code' => [
+                'nullable',
+                'string',
+                'regex:/^[0-9A-Z]{6,8}$/' // Code 2FA reste strict
+            ]
+        ]);
+    }
+
+    /**
+     * 🔧 SANITISATION LÉGÈRE (pas agressive) pour compatibilité
+     */
+    private function lightSanitizeUserInput(array $data)
+    {
+        $sanitized = [];
+        
+        foreach ($data as $key => $value) {
+            if (is_string($value) && $key !== 'password') { // 🔧 NE PAS sanitiser les mots de passe
+                // Suppression caractères de contrôle uniquement
+                $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+                
+                // Trim simple
+                $value = trim($value);
+                
+                $sanitized[$key] = $value;
+            } else {
+                $sanitized[$key] = $value; // Laisser les mots de passe intacts
+            }
+        }
+        
+        return $sanitized;
+    }
+
+    /**
+     * 🔄 REFRESH TOKEN (identique)
      */
     public function refresh(Request $request)
     {
@@ -222,7 +355,7 @@ class AuthController extends Controller
     }
     
     /**
-     * 🚪 LOGOUT
+     * 🚪 LOGOUT (identique)
      */
     public function logout(Request $request)
     {
@@ -255,7 +388,7 @@ class AuthController extends Controller
     }
 
     /**
-     * 👤 GET USER INFO
+     * 👤 GET USER INFO (identique)
      */
     public function me(Request $request)
     {
@@ -298,57 +431,59 @@ class AuthController extends Controller
     }
 
     /**
-     * 🔍 VERIFICATION CODE 2FA - Méthode privée
+     * 🔍 VERIFICATION CODE 2FA - Avec protection timing attack
      */
-    private function verify2FACode($user, $code)
+   private function verify2FACode($user, $code)
     {
-        Log::info('🔍 VERIFY 2FA CODE START', [
-            'user_id' => $user->id,
-            'code_length' => strlen($code),
-            'code_type' => strlen($code) > 6 ? 'recovery' : 'totp'
-        ]);
-
+        // Protection contre les attaques temporelles
+        $startTime = hrtime(true);
+        
         try {
-            // Code de récupération (plus de 6 caractères)
-            if (strlen($code) > 6 && !empty($user->two_factor_recovery_codes)) {
-                Log::info('🔍 CHECKING RECOVERY CODE');
-                return $this->verifyRecoveryCode($user, $code);
+            // Code de récupération (8 caractères)
+            if (strlen($code) === 8 && !empty($user->two_factor_recovery_codes)) {
+                $result = $this->verifyRecoveryCode($user, $code);
             }
-            
-            // Code TOTP normal (6 chiffres)
-            if (strlen($code) === 6 && is_numeric($code)) {
-                Log::info('🔍 CHECKING TOTP CODE');
-                
+            // Code TOTP (6 chiffres)
+            elseif (strlen($code) === 6 && is_numeric($code)) {
                 if (empty($user->two_factor_secret)) {
-                    Log::error('🔍 NO 2FA SECRET FOUND');
-                    return false;
+                    $result = false;
+                } else {
+                    $google2fa = new Google2FA();
+                    $secret = decrypt($user->two_factor_secret);
+                    $result = $google2fa->verifyKey($secret, $code, 2);
                 }
-                
-                $google2fa = new Google2FA();
-                $secret = decrypt($user->two_factor_secret);
-                $isValid = $google2fa->verifyKey($secret, $code, 2); // 2 fenêtres de tolérance
-                
-                Log::info('🔍 TOTP VERIFICATION RESULT', ['valid' => $isValid]);
-                return $isValid;
+            } else {
+                $result = false;
             }
             
-            Log::warning('🔍 INVALID CODE FORMAT', [
-                'length' => strlen($code),
-                'is_numeric' => is_numeric($code)
-            ]);
-            return false;
+            // Protection timing attack - toujours prendre le même temps
+            $elapsedTime = hrtime(true) - $startTime;
+            $minTime = 10000000; // 10ms en nanosecondes
+            if ($elapsedTime < $minTime) {
+                usleep(($minTime - $elapsedTime) / 1000);
+            }
+            
+            return $result;
             
         } catch (\Exception $e) {
-            Log::error('🔍 2FA VERIFICATION ERROR', [
+            Log::error('2FA verification error', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id
             ]);
+            
+            // Protection timing attack même en cas d'erreur
+            $elapsedTime = hrtime(true) - $startTime;
+            $minTime = 10000000;
+            if ($elapsedTime < $minTime) {
+                usleep(($minTime - $elapsedTime) / 1000);
+            }
+            
             return false;
         }
     }
     
     /**
-     * 🔐 VERIFICATION CODE DE RECUPERATION - Méthode privée
+     * 🔐 VERIFICATION CODE DE RECUPERATION - COMPATIBLE avec nouveau User.php
      */
     private function verifyRecoveryCode($user, $code)
     {
@@ -356,20 +491,19 @@ class AuthController extends Controller
             $recoveryCodes = collect(json_decode(decrypt($user->two_factor_recovery_codes), true));
             
             if (!$recoveryCodes->contains($code)) {
-                Log::info('🔐 RECOVERY CODE NOT FOUND');
                 return false;
             }
 
             // Supprimer le code utilisé (usage unique)
             $remainingCodes = $recoveryCodes->reject(function ($recoveryCode) use ($code) {
-                return $recoveryCode === $code;
+                return hash_equals($recoveryCode, $code); // Protection timing attack
             });
 
-            $user->update([
-                'two_factor_recovery_codes' => encrypt($remainingCodes->toJson())
-            ]);
+            // 🔧 CORRECTION CRITIQUE : Utiliser saveQuietly() pour ignorer les restrictions $guarded
+            $user->two_factor_recovery_codes = encrypt($remainingCodes->toJson());
+            $user->saveQuietly();
 
-            Log::info('🔐 RECOVERY CODE USED', [
+            Log::info('Recovery code used', [
                 'user_id' => $user->id,
                 'remaining_codes' => $remainingCodes->count()
             ]);
@@ -377,7 +511,7 @@ class AuthController extends Controller
             return true;
             
         } catch (\Exception $e) {
-            Log::error('🔐 RECOVERY CODE ERROR', [
+            Log::error('Recovery code error', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id
             ]);

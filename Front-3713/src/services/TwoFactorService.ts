@@ -13,9 +13,6 @@ import {
 
 class TwoFactorService {
   
-  /**
-   * Obtenir le statut A2F de l'utilisateur connecté
-   */
   async getStatus(): Promise<TwoFactorStatus> {
     try {
       const response = await api.get('/2fa/status');
@@ -26,9 +23,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Générer secret A2F et QR code
-   */
   async generateSecret(password: string): Promise<TwoFactorSetupData> {
     try {
       const response = await api.post('/2fa/generate', { password });
@@ -39,9 +33,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Confirmer et activer l'A2F
-   */
   async confirmTwoFactor(code: string): Promise<TwoFactorConfirmResult> {
     try {
       const response = await api.post('/2fa/confirm', { code });
@@ -52,9 +43,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Désactiver l'A2F
-   */
   async disableTwoFactor(password: string, code: string): Promise<{ message: string; enabled: boolean }> {
     try {
       const response = await api.post('/2fa/disable', { password, code });
@@ -65,9 +53,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Régénérer les codes de récupération
-   */
   async regenerateRecoveryCodes(password: string): Promise<RecoveryCodesData> {
     try {
       const response = await api.post('/2fa/recovery-codes', { password });
@@ -78,9 +63,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Vérifier un code A2F (pour login ou actions sensibles)
-   */
   async verifyCode(userId: number, code: string): Promise<VerifyCodeResponse> {
     try {
       const response = await api.post('/2fa/verify', { user_id: userId, code });
@@ -91,9 +73,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * 🔧 MODIFIÉ : Login avec A2F (extension du login JWT)
-   */
   async loginWithTwoFactor(email: string, password: string, twoFactorCode?: string) {
     try {
       const response = await api.post('/auth/login', {
@@ -108,13 +87,6 @@ class TwoFactorService {
     }
   }
 
-  /**
-   * Utilitaires privés
-   */
-
-  /**
-   * Gestion centralisée des erreurs API
-   */
   private handleError(error: any): TwoFactorError {
     if (error.response && error.response.data) {
       return {
@@ -137,13 +109,6 @@ class TwoFactorService {
     };
   }
 
-  /**
-   * Utilitaires pour codes de récupération
-   */
-  
-  /**
-   * Télécharger les codes de récupération sous forme de fichier texte
-   */
   downloadRecoveryCodes(codes: string[]): void {
     const content = [
       '=== 3713 Two-Factor Recovery Codes ===',

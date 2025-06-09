@@ -23,9 +23,6 @@ class TwoFactorController extends Controller
         $this->google2fa = new Google2FA();
     }
 
-    /**
-     * 🔧 Obtenir l'utilisateur authentifié via JWT
-     */
     private function getAuthenticatedUser(Request $request)
     {
         $payload = $request->attributes->get('jwt_payload');
@@ -51,9 +48,6 @@ class TwoFactorController extends Controller
         return $user;
     }
 
-    /**
-     * 📊 Obtenir le statut A2F de l'utilisateur
-     */
     public function getStatus(Request $request)
     {
         try {
@@ -84,9 +78,6 @@ class TwoFactorController extends Controller
         }
     }
 
-    /**
-     * 🔑 Générer le secret A2F et le QR code - COMPATIBLE avec nouveau User.php
-     */
     public function generateSecret(Request $request)
     {
         try {
@@ -107,15 +98,13 @@ class TwoFactorController extends Controller
                 ], 422);
             }
 
-            // Générer un nouveau secret A2F
             $secret = $this->google2fa->generateSecretKey();
             
-            // 🔧 CORRECTION CRITIQUE : Utiliser assignation directe sécurisée
-            // Méthode compatible avec les nouvelles protections $guarded
+
             $user->two_factor_secret = encrypt($secret);
             $user->two_factor_enabled = false;
             $user->two_factor_confirmed_at = null;
-            $user->saveQuietly(); // 🔧 saveQuietly() ignore les restrictions $guarded
+            $user->saveQuietly(); 
 
             // Générer l'URL pour Google Authenticator
             $qrCodeUrl = $this->google2fa->getQRCodeUrl(

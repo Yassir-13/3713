@@ -1,0 +1,253 @@
+# =================================================================
+# 🔒 GITIGNORE SÉCURISÉ POUR FRONTEND REACT 3713
+# =================================================================
+
+# 🚨 VARIABLES D'ENVIRONNEMENT CRITIQUES
+# =================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging
+.env.*.local
+*api-key*
+*secret*
+*token*
+
+# 📦 DÉPENDANCES NODE.JS
+# =================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# 🔧 FICHIERS DE BUILD ET DIST
+# =================================================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.output/
+.vercel/
+.netlify/
+
+# 🧪 TESTS ET COVERAGE
+# =================================================================
+coverage/
+.nyc_output/
+*.lcov
+.coverage
+/tests/e2e/reports/
+/tests/e2e/screenshots/
+/tests/e2e/videos/
+
+# 📝 LOGS ET DEBUG
+# =================================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 🔄 CACHE ET TEMPORAIRES
+# =================================================================
+.cache/
+.parcel-cache/
+.tmp/
+.temp/
+*.tmp
+*.temp
+.vite/
+.turbo/
+
+# 🔒 CLÉS ET CERTIFICATS
+# =================================================================
+*.pem
+*.key
+*.crt
+*.p12
+ssl/
+certificates/
+keys/
+
+# 🖥️ FICHIERS SYSTÈME ET IDEs
+# =================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# WebStorm / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# 📱 MOBILE ET PWA
+# =================================================================
+# Capacitor
+.capacitor/
+ios/
+android/
+electron/
+
+# Cordova
+platforms/
+plugins/
+www/
+
+# React Native
+.expo/
+.expo-shared/
+
+# 🔧 CONFIGURATION LOCALE ET SECRETS
+# =================================================================
+.env.development
+.env.production
+.env.staging
+.env.test
+config.local.js
+config.local.ts
+secrets.json
+firebase-config.js
+aws-config.js
+
+# 📊 ANALYTICS ET TRACKING
+# =================================================================
+.firebase/
+firebase-debug.log
+.vercel
+.netlify/
+google-analytics.json
+gtag-config.js
+
+# 🎨 ASSETS TEMPORAIRES
+# =================================================================
+/public/temp/
+/public/uploads/
+/src/assets/temp/
+*.sketch
+*.fig
+*.psd
+*.ai
+
+# 🔄 SOURCE MAPS ET DEBUG
+# =================================================================
+*.map
+*.map.js
+.sourcemap/
+source-maps/
+
+# 🧪 STORYBOOK
+# =================================================================
+storybook-static/
+.storybook/public/
+
+# 📦 PACKAGE MANAGERS
+# =================================================================
+.yarn/
+.pnp.*
+yarn.lock.backup
+package-lock.json.backup
+pnpm-lock.yaml.backup
+
+# 🔒 SÉCURITÉ FRONTEND
+# =================================================================
+# API Keys cachées dans le code
+*apiKey*
+*API_KEY*
+*secretKey*
+*SECRET_KEY*
+*authToken*
+*AUTH_TOKEN*
+
+# Configuration OAuth
+oauth-config.json
+auth-config.js
+auth-config.ts
+
+# Tokens de session
+session-storage-backup.json
+local-storage-backup.json
+
+# 🌍 INTERNATIONALISATION
+# =================================================================
+/locales/*.temp
+/translations/*.backup
+*.po.backup
+*.pot.backup
+
+# 🔧 BUNDLERS ET TOOLS
+# =================================================================
+# Webpack
+.webpack/
+webpack-stats.json
+
+# Vite
+vite.config.js.backup
+vite.config.ts.backup
+
+# Rollup
+rollup.config.js.backup
+
+# ESBuild
+.esbuild/
+
+# 📈 PERFORMANCE ET MONITORING
+# =================================================================
+.lighthouse/
+lighthouse-report.html
+bundle-analyzer-report.html
+performance-report.json
+
+# 🔄 BACKUP ET VERSIONING
+# =================================================================
+*.backup
+*.bak
+*.old
+*.orig
+*.save
+backup-*/
+versions/
+
+# 🔒 FICHIERS SENSIBLES SPÉCIFIQUES AU PROJET
+# =================================================================
+# Configuration 3713
+src/config/secrets.ts
+src/config/api-keys.ts
+src/utils/private-keys.ts
+
+# Fingerprinting
+fingerprint-cache/
+device-fingerprints/
+
+# Session data
+user-sessions/
+auth-cache/
+
+
+# 🔧 CONFIGURATION SERVEUR
+# =================================================================
+.htaccess.local
+nginx.conf.local
+apache.conf.local
+_redirects.local
+netlify.toml.local

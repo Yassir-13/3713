@@ -36,9 +36,7 @@ return [
         : [
             // 🧪 DÉVELOPPEMENT : Origins locaux uniquement
             'http://localhost:5173',    // Vite React
-            'http://localhost:3000',    // Create React App
             'http://127.0.0.1:5173',   // IP variant
-            'http://127.0.0.1:3000',   // IP variant
             env('FRONTEND_URL', 'http://localhost:5173'),
         ],
 
@@ -89,28 +87,28 @@ return [
     |--------------------------------------------------------------------------
     */
     'exposed_headers' => [
-        // 🔐 JWT & Auth
+        //JWT & Auth
         'Authorization',            // Nouveau token après refresh
         
-        // 📊 Rate Limiting & Quotas (pour UI)
+        //Rate Limiting & Quotas (pour UI)
         'X-RateLimit-Remaining',   // Scans restants
         'X-RateLimit-Reset',       // Timestamp reset quotas
         'X-RateLimit-Limit',       // Limite totale
         
-        // 🎯 Metadata 3713 pour UI en temps réel
+        //Metadata 3713 pour UI en temps réel
         'X-Scan-Progress',         // Progression scan (0-100%)
         'X-Scan-Status',           // pending, running, completed
         'X-Security-Score',        // Score calculé (0-10)
         'X-Scan-ID',              // ID du scan en cours
         
-        // 🛠️ Metadata système
+        //Metadata système
         'X-API-Version',           // Version API
         'X-Response-Time',         // Temps de réponse
         'X-3713-Security',         // Statut sécurité
         'X-Client-Verified',       // Client validé
         'X-Validation-Status',     // Status validation headers
         
-        // 📦 Cache pour performance
+        //Cache pour performance
         'ETag',                    // Cache validation
         'Last-Modified',           // Date modification
         'Content-Length',          // Taille réponse
@@ -130,32 +128,3 @@ return [
     // 🔒 Support des credentials (cookies, authorization headers)
     'supports_credentials' => true,  // Nécessaire pour JWT dans Authorization header
 ];
-
-/*
-|--------------------------------------------------------------------------
-| 📝 Notes de débogage CORS
-|--------------------------------------------------------------------------
-| 
-| Pour tester votre config CORS :
-| 
-| 1. Preflight test (OPTIONS) :
-|    curl -H "Origin: http://localhost:5173" \
-|         -H "Access-Control-Request-Method: POST" \
-|         -H "Access-Control-Request-Headers: Content-Type,Authorization" \
-|         -X OPTIONS http://localhost:8000/api/test
-| 
-| 2. Test origin valide :
-|    curl -H "Origin: http://localhost:5173" \
-|         -X GET http://localhost:8000/api/test
-| 
-| 3. Test origin invalide (doit être rejeté) :
-|    curl -H "Origin: http://malicious.com" \
-|         -X GET http://localhost:8000/api/test
-| 
-| 4. Vérification headers exposés :
-|    curl -v -H "Origin: http://localhost:5173" \
-|         http://localhost:8000/api/test
-| 
-| Si le test 3 passe, votre CORS n'est pas correctement configuré !
-|--------------------------------------------------------------------------
-*/

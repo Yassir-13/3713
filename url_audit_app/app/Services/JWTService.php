@@ -33,11 +33,10 @@ class JWTService
      */
     public function generateToken(User $user, array $extraClaims = []): array
     {
-        // 🔧 CORRECTION CRITIQUE : Créer les timestamps de façon immutable
         $now = Carbon::now();
         $issuedAt = $now->timestamp;
         $notBefore = $now->timestamp;
-        $expiresAt = $now->copy()->addSeconds($this->ttl)->timestamp; // 🔧 UTILISER copy()
+        $expiresAt = $now->copy()->addSeconds($this->ttl)->timestamp; 
         
         $jti = $this->generateJti();
         
@@ -53,9 +52,9 @@ class JWTService
         $payload = [
             'iss' => config('app.name', '3713'),
             'aud' => '3713-users',
-            'iat' => $issuedAt,     // 🔧 CORRECTION : Utiliser timestamp fixe
-            'nbf' => $notBefore,    // 🔧 CORRECTION : Utiliser timestamp fixe
-            'exp' => $expiresAt,    // 🔧 CORRECTION : Utiliser timestamp calculé avec copy()
+            'iat' => $issuedAt,
+            'nbf' => $notBefore,   
+            'exp' => $expiresAt,    
             'sub' => $user->id,
             'jti' => $jti,
             
@@ -103,7 +102,7 @@ class JWTService
         $this->storeTokenId($jti, $user->id, $this->ttl);
         $this->storeTokenId($jti . '_refresh', $user->id, $this->refreshTtl);
 
-        Log::info('✅ JWT Tokens generated successfully', [
+        Log::info('JWT Tokens generated successfully', [
             'user_id' => $user->id,
             'access_expires_at' => date('Y-m-d H:i:s', $expiresAt),
             'refresh_expires_at' => date('Y-m-d H:i:s', $refreshExpiresAt)
@@ -126,12 +125,12 @@ class JWTService
         try {
             $decoded = JWT::decode($token, new Key($this->secret, $this->algo));
             
-            Log::debug('🔧 JWT Token decoded', [
+            Log::debug('JWT Token decoded', [
                 'jti' => $decoded->jti ?? 'missing',
                 'sub' => $decoded->sub ?? 'missing',
                 'exp' => isset($decoded->exp) ? date('Y-m-d H:i:s', $decoded->exp) : 'missing',
-                'iat' => isset($decoded->iat) ? date('Y-m-d H:i:s', $decoded->iat) : 'missing', // 🔧 AJOUTÉ pour debug
-                'current_time' => date('Y-m-d H:i:s'), // 🔧 AJOUTÉ pour debug
+                'iat' => isset($decoded->iat) ? date('Y-m-d H:i:s', $decoded->iat) : 'missing', 
+                'current_time' => date('Y-m-d H:i:s'), 
                 'is_blacklisted' => $this->isTokenBlacklisted($decoded->jti ?? '')
             ]);
             
@@ -152,7 +151,7 @@ class JWTService
         } catch (\Exception $e) {
             Log::error('JWT Validation error', [
                 'error' => $e->getMessage(),
-                'error_type' => get_class($e) // 🔧 AJOUTÉ pour débugger
+                'error_type' => get_class($e) 
             ]);
             return null;
         }

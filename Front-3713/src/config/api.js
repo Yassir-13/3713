@@ -47,7 +47,6 @@ const getClientId = async () => {
 api.interceptors.request.use(
   async config => {
     try {
-      // 🔧 TOUJOURS ajouter X-API-Version
       config.headers['X-API-Version'] = 'v1.0';
       
       const token = localStorage.getItem('token');
@@ -55,7 +54,6 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
 
-      // 🔧 Client-ID seulement si disponible (non-bloquant)
       try {
         const clientId = await getClientId();
         if (clientId) {
@@ -63,7 +61,6 @@ api.interceptors.request.use(
         }
       } catch (e) {
         console.warn('🔧 Client-ID generation failed (non-blocking):', e.message);
-        // Continuer sans Client-ID en cas d'échec
       }
       
       if (config.url?.includes('/scan')) {

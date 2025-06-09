@@ -26,20 +26,19 @@ class ValidateCustomHeaders
 
     public function handle(Request $request, Closure $next): Response
     {
-        Log::info('🔒 Header validation middleware', [
+        Log::info('Header validation middleware', [
             'path' => $request->path(),
             'method' => $request->method(),
             'has_api_version' => $request->hasHeader('X-API-Version'),
             'has_client_id' => $request->hasHeader('X-Client-ID'),
         ]);
 
-        // 🔧 CORRIGÉ : Exemptions étendues
         if ($this->shouldSkipValidation($request)) {
             Log::info('🔒 Validation skipped for route', ['path' => $request->path()]);
             return $this->addResponseHeaders($next($request), $request);
         }
         
-        // 🔒 Validation non-bloquante en développement
+        //Validation non-bloquante en développement
         $this->validateCustomHeaders($request);
         $this->validateRequiredHeaders($request);
         $this->validateCriticalHeaders($request);

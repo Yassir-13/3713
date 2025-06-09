@@ -40,7 +40,6 @@ class JWTAuth
                 ], 401);
             }
             
-            // 🔧 CORRECTION CRITIQUE : Vérification sécurisée des permissions
             if (!empty($permissions)) {
                 $userPermissions = $this->extractUserPermissions($payload);
                 
@@ -68,11 +67,11 @@ class JWTAuth
                 }
             }
             
-            // ✅ STOCKAGE SÉCURISÉ dans les attributes
+            //STOCKAGE SÉCURISÉ dans les attributes
             $request->attributes->set('jwt_payload', $payload);
             
             // Log pour audit
-            Log::info('🔑 JWT AUTH SUCCESS', [
+            Log::info('JWT AUTH SUCCESS', [
                 'user_id' => $payload->sub ?? 'unknown',
                 'endpoint' => $request->path(),
                 'method' => $request->method(),

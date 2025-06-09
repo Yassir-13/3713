@@ -1,0 +1,171 @@
+# =================================================================
+# 🔒 GITIGNORE SÉCURISÉ POUR BACKEND LARAVEL 3713
+# =================================================================
+
+# 🚨 VARIABLES D'ENVIRONNEMENT CRITIQUES
+# =================================================================
+.env
+.env.backup
+.env.production
+.env.local
+.env.*.local
+.env.example.filled
+
+# 🔐 SECRETS LARAVEL SPÉCIFIQUES
+# =================================================================
+*_secret*
+*_key*
+*jwt*secret*
+app_key*
+oauth-*
+storage/oauth-*
+
+# 📦 DÉPENDANCES COMPOSER
+# =================================================================
+/vendor/
+composer.phar
+composer.lock.backup
+
+# 🗄️ BASE DE DONNÉES
+# =================================================================
+*.sqlite
+*.sqlite3
+/database/*.sqlite
+/database/*.sqlite3
+/database/database.sqlite
+*.sql
+*.dump
+database-backup*
+db-export*
+
+# 📝 LOGS ET CACHE LARAVEL
+# =================================================================
+/storage/logs/
+/storage/debugbar/
+/storage/app/private/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/bootstrap/cache/
+*.log
+laravel.log
+lumen.log
+
+# 🔧 FICHIERS GÉNÉRÉS AUTOMATIQUEMENT
+# =================================================================
+/public/hot
+/public/storage
+/public/mix-manifest.json
+/public/build/
+/storage/*.key
+/storage/app/public/
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+
+# 📊 RAPPORTS ET EXPORTS
+# =================================================================
+/storage/exports/
+/storage/reports/
+/storage/scans/
+/public/reports/
+/public/exports/
+*.report
+*.export
+*.csv.backup
+scan-*.json
+scan-*.xml
+
+# 🔒 FICHIERS DE SÉCURITÉ SENSIBLES
+# =================================================================
+/storage/app/security/
+/storage/ssl/
+*.p12
+*.pem
+*.crt
+*.csr
+*.key
+ssl-certificates/
+security-keys/
+
+# 🧪 TESTS ET DEBUG
+# =================================================================
+/.phpunit.cache
+/phpunit.xml
+/coverage/
+/tests/coverage/
+/.phpunit.result.cache
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# 🔄 CACHE ET OPTIMIZATION
+# =================================================================
+/config/cache/
+/routes/cache/
+/bootstrap/compiled.php
+/storage/framework/compiled.php
+/storage/meta/
+
+# 📱 MOBILE API KEYS (si API mobile)
+# =================================================================
+/config/mobile-keys.php
+/storage/push-certificates/
+google-services.json
+GoogleService-Info.plist
+
+# 🌍 FICHIERS LOCAUX DE DÉVELOPPEMENT
+# =================================================================
+/.vscode/
+/.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# 🐳 DOCKER (si utilisé localement)
+# =================================================================
+docker-compose.override.yml
+.dockerignore.local
+Dockerfile.local
+
+# 🔧 OUTILS DE DÉVELOPPEMENT
+# =================================================================
+.php_cs.cache
+.php-cs-fixer.cache
+.psalm/
+phpstan.neon.local
+rector.php.local
+
+# 📈 MONITORING ET ANALYTICS
+# =================================================================
+/storage/analytics/
+/storage/monitoring/
+newrelic.ini
+blackfire.ini
+
+# 🔒 FICHIERS BACKUP ET TEMPORAIRES
+# =================================================================
+*.backup
+*.bak
+*.old
+*.tmp
+backup-*
+temp-*
+/storage/temp/
+/storage/backup/
+
+# 🛠️ CONFIGURATION SERVEUR LOCALE
+# =================================================================
+.htaccess.local
+web.config.local
+nginx.conf.local
+php.ini.local
+
+# 📦 PACKAGES ET MODULES LOCAUX
+# =================================================================
+/packages/
+/workbench/

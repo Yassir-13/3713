@@ -40,9 +40,7 @@ export const useTwoFactor = (): UseTwoFactorReturn => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * 📊 Charger le statut A2F utilisateur
-   */
+
   const loadStatus = useCallback(async () => {
     try {
       setIsLoading(true);

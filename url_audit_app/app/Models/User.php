@@ -20,43 +20,28 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        // 🚨 SUPPRIMÉ : tous les champs 2FA pour éviter le bypass
-        // 🚨 SUPPRIMÉ : any admin/role fields
     ];
-
-    /**
-     * 🔒 PROTECTION EXPLICITE : Champs INTERDITS pour mass assignment
-     * Double protection avec $guarded
-     */
     protected $guarded = [
         'id',
         'email_verified_at',
         'remember_token',
         'created_at',
         'updated_at',
-        
-        // 🔒 CHAMPS 2FA PROTÉGÉS
+      
         'two_factor_secret',
         'two_factor_recovery_codes', 
         'two_factor_confirmed_at',
         'two_factor_enabled',
         
-        // 🔒 CHAMPS ADMIN/ROLE PROTÉGÉS (si ajoutés plus tard)
         'is_admin',
         'role',
         'permissions',
         'status',
         'email_verified_at',
-        
-        // 🔒 AUTRES CHAMPS SENSIBLES
         'api_token',
         'last_login_at',
         'login_count'
     ];
-
-    /**
-     * 🔒 HIDDEN : Champs cachés dans les réponses JSON
-     */
     protected $hidden = [
         'password',
         'remember_token',

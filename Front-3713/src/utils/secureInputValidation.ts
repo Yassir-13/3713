@@ -39,12 +39,10 @@ class SecureInputValidator {
   private injectionPatterns: RegExp[];
 
   constructor() {
-    // 🔧 PATTERNS MOINS STRICTS pour compatibilité
     this.patterns = {
       name: /^[\p{L}\s.'-]{2,50}$/u,
       email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-      // 🔧 CORRECTION : Password moins strict pour compatibilité utilisateurs existants
-      password: /^.{8,255}$/, // Juste longueur, pas de caractères spéciaux requis
+      password: /^.{8,255}$/, 
       twoFactorCode: /^[0-9A-Z]{6,8}$/
     };
 
@@ -53,24 +51,72 @@ class SecureInputValidator {
     
     // Payloads d'injection courants
     this.injectionPatterns = [
-      /script\s*:/i,
-      /javascript\s*:/i,
-      /vbscript\s*:/i,
-      /onload\s*=/i,
-      /onerror\s*=/i,
-      /eval\s*\(/i,
-      /expression\s*\(/i,
-      /<\s*script/i,
-      /<\s*iframe/i,
-      /<\s*object/i,
-      /<\s*embed/i,
-      /\$\{/,
-      /\{\{.*\}\}/,
-      /<%.*%>/,
-      /union\s+select/i,
-      /drop\s+table/i,
-      /insert\s+into/i,
-      /delete\s+from/i
+      /script\s*:/i,              // Protocole javascript:
+        /javascript\s*:/i,          // Protocole javascript: explicite
+        /vbscript\s*:/i,           // VBScript (IE legacy)
+        /onload\s*=/i,             // Event handler onload
+        /onerror\s*=/i,            // Event handler onerror
+        /onclick\s*=/i,            // Event handler onclick
+        /onmouseover\s*=/i,        // Event handler onmouseover
+        /eval\s*\(/i,              // Fonction eval() JavaScript
+        /expression\s*\(/i,        // CSS expression() (IE)
+        
+        // === CATÉGORIE XSS BALISES HTML ===
+        /<\s*script/i,             // Balise <script>
+        /<\s*iframe/i,             // Balise <iframe>
+        /<\s*object/i,             // Balise <object>
+        /<\s*embed/i,              // Balise <embed>
+        /<\s*form/i,               // Balise <form>
+        /<\s*input/i,              // Balise <input>
+        /<\s*meta/i,               // Balise <meta>
+        /<\s*link/i,               // Balise <link>
+        
+        // === CATÉGORIE TEMPLATE INJECTION ===
+        /\$\{/,                    // Template literals ${...}
+        /\{\{.*\}\}/,              // Handlebars/Angular {{...}}
+        /<%.*%>/,                  // ASP/JSP <% ... %>
+        /\[\[.*\]\]/,              // Double bracket templates
+        
+        // === CATÉGORIE SQL INJECTION ===
+        /union\s+select/i,         // UNION SELECT classique
+        /drop\s+table/i,           // DROP TABLE destructeur
+        /insert\s+into/i,          // INSERT INTO
+        /delete\s+from/i,          // DELETE FROM
+        /update\s+set/i,           // UPDATE SET
+        /alter\s+table/i,          // ALTER TABLE
+        /create\s+table/i,         // CREATE TABLE
+        /truncate\s+table/i,       // TRUNCATE TABLE
+        
+        // === CATÉGORIE COMMAND INJECTION ===
+        /;\s*rm\s/i,               // Command rm (Unix)
+        /;\s*del\s/i,              // Command del (Windows)
+        /;\s*cat\s/i,              // Command cat
+        /;\s*wget\s/i,             // Command wget
+        /;\s*curl\s/i,             // Command curl
+        /;\s*nc\s/i,               // Netcat
+        /\|\s*nc\s/i,              // Pipe vers netcat
+        
+        // === CATÉGORIE PATH TRAVERSAL ===
+        /\.\.\//,                  // Directory traversal ../
+        /\/etc\/passwd/i,          // Fichier passwd Unix
+        /\/proc\/version/i,        // Fichier proc Linux
+        /c:\\windows\\system32/i,  // Répertoire Windows
+        
+        // === CATÉGORIE LDAP INJECTION ===
+        /\(\|\(/,                  // LDAP OR condition
+        /\)\(\&\(/,                // LDAP AND condition
+        /\*\)\(/,                  // LDAP wildcard
+        
+        // === CATÉGORIE XXE (XML EXTERNAL ENTITY) ===
+        /<!ENTITY/i,               // Entity XML
+        /<!DOCTYPE.*ENTITY/i,      // DOCTYPE avec ENTITY
+        /SYSTEM\s+["']/i,          // SYSTEM declaration
+        
+        // === CATÉGORIE NOSQL INJECTION ===
+        /\$ne\s*:/i,               // MongoDB $ne
+        /\$gt\s*:/i,               // MongoDB $gt
+        /\$where\s*:/i,            // MongoDB $where
+        /\$regex\s*:/i,            // MongoDB $regex
     ];
   }
 

@@ -110,8 +110,8 @@ class AuthController extends Controller
         $ipRateLimitKey = 'login-ip:' . $request->ip();
         $emailRateLimitKey = 'login-email:' . hash('sha256', $request->input('email', ''));
         
-        if (RateLimiter::tooManyAttempts($ipRateLimitKey, 15) || // 15 au lieu de 10
-            RateLimiter::tooManyAttempts($emailRateLimitKey, 8)) { // 8 au lieu de 5
+        if (RateLimiter::tooManyAttempts($ipRateLimitKey, 15) || 
+            RateLimiter::tooManyAttempts($emailRateLimitKey, 8)) { 
             
             $seconds = max(
                 RateLimiter::availableIn($ipRateLimitKey),
@@ -278,7 +278,7 @@ class AuthController extends Controller
             'email' => [
                 'required',
                 'string',
-                'email', // 🔧 CORRECTION : email simple
+                'email', 
                 'max:100'
             ],
             'password' => [
@@ -290,24 +290,19 @@ class AuthController extends Controller
             'two_factor_code' => [
                 'nullable',
                 'string',
-                'regex:/^[0-9A-Z]{6,8}$/' // Code 2FA reste strict
+                'regex:/^[0-9A-Z]{6,8}$/' 
             ]
         ]);
     }
 
-    /**
-     * 🔧 SANITISATION LÉGÈRE (pas agressive) pour compatibilité
-     */
     private function lightSanitizeUserInput(array $data)
     {
         $sanitized = [];
         
         foreach ($data as $key => $value) {
-            if (is_string($value) && $key !== 'password') { // 🔧 NE PAS sanitiser les mots de passe
-                // Suppression caractères de contrôle uniquement
+            if (is_string($value) && $key !== 'password') { 
                 $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
                 
-                // Trim simple
                 $value = trim($value);
                 
                 $sanitized[$key] = $value;
